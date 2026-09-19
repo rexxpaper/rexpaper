@@ -77,6 +77,26 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
 
     let child = cmd.spawn()?;
 
+    // Give mpv a moment to attach to the window, then ensure host is visible
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    unsafe {
+        let _ = ShowWindow(wallpaper_hwnd, SW_SHOW);
+        let _ = UpdateWindow(wallpaper_hwnd);
+        // Re-assert z-order in case mpv window creation affected it
+        if let Ok(defview) =
+            FindWindowExW(Some(get_progman()), None, windows::core::w!("SHELLDLL_DefView"), None)
+        {
+            if !defview.0.is_null() {
+                let _ = SetWindowPos(
+                    wallpaper_hwnd,
+                    Some(defview),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+            }
+        }
+    }
+
     *MPV_PROCESS_ID.lock().unwrap() = Some(child.id());
     *CURRENT_LIVE_PATH.lock().unwrap() = Some(video_path.to_path_buf());
     IS_WALLPAPER_ACTIVE.store(true, Ordering::SeqCst);
@@ -398,25 +418,35 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
             }
         }
 
-        // Push the system wallpaper WorkerW layer behind the host window
+        // Ensure WorkerW is pushed behind host - retry a few times since 0x052C is async
         let mut workerw = HWND(std::ptr::null_mut());
-        let _ = EnumChildWindows(
-            Some(progman),
-            Some(enum_child_workerw_proc),
-            LPARAM(&mut workerw as *mut HWND as isize),
-        );
-        if !workerw.0.is_null() {
-            if let Err(e) = SetWindowPos(
-                workerw,
-                Some(hwnd),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            ) {
-                eprintln!("[RexPaper] SetWindowPos (WorkerW behind host) failed: {}", e);
+        for attempt in 0..5 {
+            workerw = HWND(std::ptr::null_mut());
+            let _ = EnumChildWindows(
+                Some(progman),
+                Some(enum_child_workerw_proc),
+                LPARAM(&mut workerw as *mut HWND as isize),
+            );
+            if !workerw.0.is_null() {
+                if let Err(e) = SetWindowPos(
+                    workerw,
+                    Some(hwnd),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                ) {
+                    eprintln!("[RexPaper] SetWindowPos (WorkerW behind host) failed: {}", e);
+                } else {
+                    eprintln!("[RexPaper] WorkerW pushed behind host on attempt {}", attempt + 1);
+                    break;
+                }
             }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if workerw.0.is_null() {
+            eprintln!("[RexPaper] Warning: WorkerW not found after retries, static wallpaper may show through");
         }
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -439,14 +469,20 @@ fn resolve_live_wallpaper_hwnd() -> Result<HWND, Box<dyn std::error::Error>> {
     }
 
     if is_raised_desktop(progman) {
+        // On raised desktop, spawn layers and wait briefly for WorkerW to be created
         spawn_workerw_layers(progman);
+        std::thread::sleep(std::time::Duration::from_millis(200));
         match ensure_host_window(progman) {
             Ok(host) if !host.0.is_null() => return Ok(host),
             Ok(_) => eprintln!("[RexPaper] ensure_host_window returned null handle"),
             Err(e) => eprintln!("[RexPaper] ensure_host_window failed: {}", e),
         }
+        // On raised desktop, do NOT fall back to classic (EnumWindows doesn'"'"'t find child WorkerW)
+        eprintln!("[RexPaper] Raised desktop: host window creation failed, returning Progman as last resort");
+        return Ok(progman);
     } else {
         spawn_workerw_layers(progman);
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     find_workerw_classic(progman)
