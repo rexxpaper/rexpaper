@@ -310,7 +310,16 @@ fn find_mpv_for_thumbnail() -> Option<PathBuf> {
         if let Ok(abs) = p3.canonicalize() { return Some(abs); }
         return Some(p3);
     }
-    which::which("mpv").ok()
+    if let Ok(path) = which::which("mpv") {
+        if path.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+            return Some(path);
+        }
+        let sibling_exe = path.with_extension("exe");
+        if sibling_exe.exists() {
+            return Some(sibling_exe);
+        }
+    }
+    None
 }
 
 pub fn get_cache_dir() -> PathBuf {
