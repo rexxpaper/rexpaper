@@ -96,11 +96,6 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     IS_WALLPAPER_ACTIVE.store(false, Ordering::SeqCst);
     IS_PAUSED_FOR_FULLSCREEN.store(false, Ordering::SeqCst);
 
-    // Terminate any orphan mpv background instances
-    let mut kill_all = Command::new("taskkill");
-    kill_all.creation_flags(CREATE_NO_WINDOW);
-    let _ = kill_all.args(["/IM", "mpv.exe", "/F", "/T"]).status();
-
     // Redraw desktop wallpaper / icons
     unsafe {
         if let Ok(progman) = FindWindowW(windows::core::w!("Progman"), None) {
@@ -280,8 +275,13 @@ fn spawn_workerw_layers(progman: HWND) {
 /// Progman carries WS_EX_NOREDIRECTIONBITMAP and the shell views are layered children.
 fn is_raised_desktop(progman: HWND) -> bool {
     unsafe {
-        let ex_style = GetWindowLongPtrW(progman, GWL_EXSTYLE);
-        ex_style != 0 && (ex_style & WS_EX_NOREDIRECTIONBITMAP) != 0
+        let ex_style = GetWindowLongPtrW(progman, windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE);
+        let err = GetLastError();
+        if ex_style == 0 && err.0 != 0 {
+            eprintln!("[RexPaper] GetWindowLongPtrW failed: {:?}, assuming classic desktop", err);
+            return false;
+        }
+        (ex_style & WS_EX_NOREDIRECTIONBITMAP) != 0
     }
 }
 
@@ -313,15 +313,19 @@ unsafe extern "system" fn enum_child_workerw_proc(hwnd: HWND, lparam: LPARAM) ->
 /// Creates (or reuses) a layered, fully opaque host window parented to Progman and
 /// z-ordered between the desktop icons (SHELLDLL_DefView) and the system wallpaper
 /// layer. mpv renders into this window via `--wid` for the raised-desktop layout.
-fn ensure_host_window(progman: HWND) -> HWND {
-    unsafe {
-        if let Some(existing) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
-            let existing_hwnd = HWND(existing as *mut std::ffi::c_void);
-            if !existing_hwnd.0.is_null() && IsWindow(Some(existing_hwnd)).as_bool() {
-                return existing_hwnd;
-            }
-        }
+fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>> {
+    // Hold the lock for the entire check-and-create to prevent races
+    let mut guard = DESKTOP_HOST_WINDOW.lock().unwrap();
 
+    // Check if we already have a valid host window
+    if let Some(existing) = *guard {
+        let existing_hwnd = HWND(existing as *mut std::ffi::c_void);
+        if !existing_hwnd.0.is_null() && unsafe { IsWindow(Some(existing_hwnd)).as_bool() } {
+            return Ok(existing_hwnd);
+        }
+    }
+
+    unsafe {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = windows::core::w!("RexPaperLiveHost");
 
@@ -332,7 +336,12 @@ fn ensure_host_window(progman: HWND) -> HWND {
                 lpszClassName: class_name,
                 ..Default::default()
             };
-            let _ = RegisterClassW(&wnd_class);
+            if RegisterClassW(&wnd_class) == 0 {
+                let err = GetLastError();
+                if err.0 != 1410 { // ERROR_CLASS_ALREADY_EXISTS
+                    eprintln!("[RexPaper] RegisterClassW failed: {:?}", err);
+                }
+            }
             HOST_CLASS_REGISTERED.store(true, Ordering::SeqCst);
         }
 
@@ -354,22 +363,28 @@ fn ensure_host_window(progman: HWND) -> HWND {
             None,
             Some(hinstance.into()),
             None,
-        )
-        .unwrap_or_default();
+        );
 
-        if hwnd.0.is_null() {
-            return hwnd;
+        let hwnd = match hwnd {
+            Ok(h) if !h.0.is_null() => h,
+            Ok(_) => return Err("CreateWindowExW returned null handle".into()),
+            Err(e) => return Err(format!("CreateWindowExW failed: {}", e).into()),
+        };
+
+        if let Err(e) = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA) {
+            eprintln!("[RexPaper] SetLayeredWindowAttributes failed: {}", e);
         }
 
-        let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
-        let _ = SetParent(hwnd, Some(progman));
+        if let Err(e) = SetParent(hwnd, Some(progman)) {
+            eprintln!("[RexPaper] SetParent failed: {}", e);
+        }
 
         // Place the host layer below the desktop icons (z-order after SHELLDLL_DefView)
         if let Ok(defview) =
             FindWindowExW(Some(progman), None, windows::core::w!("SHELLDLL_DefView"), None)
         {
             if !defview.0.is_null() {
-                let _ = SetWindowPos(
+                if let Err(e) = SetWindowPos(
                     hwnd,
                     Some(defview),
                     0,
@@ -377,7 +392,9 @@ fn ensure_host_window(progman: HWND) -> HWND {
                     0,
                     0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                );
+                ) {
+                    eprintln!("[RexPaper] SetWindowPos (host below DefView) failed: {}", e);
+                }
             }
         }
 
@@ -389,7 +406,7 @@ fn ensure_host_window(progman: HWND) -> HWND {
             LPARAM(&mut workerw as *mut HWND as isize),
         );
         if !workerw.0.is_null() {
-            let _ = SetWindowPos(
+            if let Err(e) = SetWindowPos(
                 workerw,
                 Some(hwnd),
                 0,
@@ -397,13 +414,15 @@ fn ensure_host_window(progman: HWND) -> HWND {
                 0,
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
+            ) {
+                eprintln!("[RexPaper] SetWindowPos (WorkerW behind host) failed: {}", e);
+            }
         }
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 
-        *DESKTOP_HOST_WINDOW.lock().unwrap() = Some(hwnd.0 as usize);
-        hwnd
+        *guard = Some(hwnd.0 as usize);
+        Ok(hwnd)
     }
 }
 
@@ -419,13 +438,15 @@ fn resolve_live_wallpaper_hwnd() -> Result<HWND, Box<dyn std::error::Error>> {
         return Err("Progman desktop window not found".into());
     }
 
-    spawn_workerw_layers(progman);
-
     if is_raised_desktop(progman) {
-        let host = ensure_host_window(progman);
-        if !host.0.is_null() {
-            return Ok(host);
+        spawn_workerw_layers(progman);
+        match ensure_host_window(progman) {
+            Ok(host) if !host.0.is_null() => return Ok(host),
+            Ok(_) => eprintln!("[RexPaper] ensure_host_window returned null handle"),
+            Err(e) => eprintln!("[RexPaper] ensure_host_window failed: {}", e),
         }
+    } else {
+        spawn_workerw_layers(progman);
     }
 
     find_workerw_classic(progman)
@@ -554,13 +575,35 @@ fn find_mpv_executable() -> Result<std::path::PathBuf, Box<dyn std::error::Error
 
     // 4. Check system PATH (skip the console-subsystem mpv.com wrapper that %PATHEXT%
     //    would normally resolve in favor of mpv.exe)
+    // First try which::which for mpv.exe explicitly
+    if let Ok(path) = which::which("mpv.exe") {
+        return Ok(path);
+    }
+    // Fallback: which::which("mpv") may return mpv.com due to PATHEXT ordering
     if let Ok(path) = which::which("mpv") {
         if path.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) {
             return Ok(path);
         }
+        // Check for mpv.exe sibling in the same directory
         let sibling_exe = path.with_extension("exe");
         if sibling_exe.exists() {
             return Ok(sibling_exe);
+        }
+        // Also check parent directory for mpv.exe (some installations)
+        if let Some(parent) = path.parent() {
+            let parent_exe = parent.join("mpv.exe");
+            if parent_exe.exists() {
+                return Ok(parent_exe);
+            }
+        }
+    }
+    // 5. Explicitly scan PATH directories for mpv.exe (bypasses PATHEXT issues)
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in path_var.split(';') {
+            let candidate = std::path::Path::new(dir).join("mpv.exe");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
         }
     }
 
