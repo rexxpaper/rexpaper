@@ -116,7 +116,41 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     IS_WALLPAPER_ACTIVE.store(false, Ordering::SeqCst);
     IS_PAUSED_FOR_FULLSCREEN.store(false, Ordering::SeqCst);
 
-    // Redraw desktop wallpaper / icons
+    // Destroy the desktop host window used for the Windows 11 raised-desktop layout FIRST
+    // (must be done before RedrawWindow so the static wallpaper can show through)
+    let mut workerw_restored = false;
+    if let Some(host) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
+        let host_hwnd = HWND(host as *mut std::ffi::c_void);
+        if !host_hwnd.0.is_null() {
+            unsafe {
+                // Before destroying host, restore WorkerW to front (above where host was)
+                let progman = get_progman();
+                if !progman.0.is_null() {
+                    let mut workerw = HWND(std::ptr::null_mut());
+                    let _ = EnumChildWindows(
+                        Some(progman),
+                        Some(enum_child_workerw_proc),
+                        LPARAM(&mut workerw as *mut HWND as isize),
+                    );
+                    if !workerw.0.is_null() {
+                        // Move WorkerW to top of Progman children so static wallpaper is visible
+                        let _ = SetWindowPos(
+                            workerw,
+                            None, // HWND_TOP
+                            0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                        );
+                        workerw_restored = true;
+                        eprintln!("[RexPaper] WorkerW restored to front for static wallpaper");
+                    }
+                }
+                let _ = DestroyWindow(host_hwnd);
+            }
+        }
+    }
+    *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
+
+    // Now redraw desktop to show static wallpaper
     unsafe {
         if let Ok(progman) = FindWindowW(windows::core::w!("Progman"), None) {
             if !progman.0.is_null() {
@@ -124,17 +158,6 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    // Destroy the desktop host window used for the Windows 11 raised-desktop layout
-    if let Some(host) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
-        let host_hwnd = HWND(host as *mut std::ffi::c_void);
-        if !host_hwnd.0.is_null() {
-            unsafe {
-                let _ = DestroyWindow(host_hwnd);
-            }
-        }
-    }
-    *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
 
     Ok(())
 }
