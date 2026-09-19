@@ -13,6 +13,9 @@ permissions:
 
 jobs:
   build-windows:
+    # Only build/release on the main org repo (this is a fork). Pushes to the fork
+    # are no-op skips; real builds run when a PR is merged into rexxpaper/rexpaper.
+    if: github.repository == 'rexxpaper/rexpaper'
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -100,7 +103,6 @@ jobs:
           Copy-Item ./mpv/mpv.exe target/release/ -Force
           Copy-Item ./mpv/libmpv-2.dll target/release/ -Force
           Copy-Item ./mpv/libmpv-2.dll target/release/mpv.dll -Force
-          Copy-Item ./mpv/mpv.com target/release/ -Force -ErrorAction SilentlyContinue
           ls target/release/
 
       - name: Build MSI with WiX
@@ -122,7 +124,6 @@ jobs:
           Copy-Item target/release/libmpv-2.dll $portableDir/
           Copy-Item target/release/mpv.dll $portableDir/
           Copy-Item target/release/mpv.exe $portableDir/
-          Copy-Item target/release/mpv.com $portableDir/ -ErrorAction SilentlyContinue
           Copy-Item -Recurse assets $portableDir/
           Copy-Item README.md $portableDir/
           Copy-Item LICENSE $portableDir/

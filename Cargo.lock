@@ -4139,7 +4139,7 @@ dependencies = [
 
 [[package]]
 name = "rexpaper"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "directories",
  "dirs",
