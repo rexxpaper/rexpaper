@@ -118,7 +118,7 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
 
     // Destroy the desktop host window used for the Windows 11 raised-desktop layout FIRST
     // (must be done before RedrawWindow so the static wallpaper can show through)
-    let mut workerw_restored = false;
+    
     if let Some(host) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
         let host_hwnd = HWND(host as *mut std::ffi::c_void);
         if !host_hwnd.0.is_null() {
@@ -140,7 +140,7 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
                             0, 0, 0, 0,
                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
                         );
-                        workerw_restored = true;
+                        
                         eprintln!("[RexPaper] WorkerW restored to front for static wallpaper");
                     }
                 }
