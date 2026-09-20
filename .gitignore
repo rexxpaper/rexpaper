@@ -22,6 +22,10 @@ test_*.rs
 *.log
 /target
 
+# Local-only engineering notes (never push these)
+DEV_WINDOWS_FIX_NOTES.md
+DEV_*.md
+
 # Locally generated mpv import library (mpv.lib) and download staging
 /mpv-lib
 /mpv-dev.7z

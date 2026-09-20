@@ -35,6 +35,10 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
         let wide_path: Vec<u16> = OsStr::new(&absolute_path).encode_wide().chain(Some(0)).collect();
         
         unsafe {
+            // Single standard broadcast via SPI itself (SPIF_SENDCHANGE), exactly once.
+            // A separate manual WM_SETTINGCHANGE broadcast to HWND_BROADCAST is what
+            // triggered the blank File Explorer window when combined with SPI's own
+            // broadcast - do NOT add another one here.
             let result = SystemParametersInfoW(
                 SPI_SETDESKWALLPAPER,
                 0,
@@ -43,12 +47,10 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
             );
             if let Err(e) = result {
                 eprintln!("[RexPaper] SystemParametersInfoW ERROR: {:?}", e);
-                
-                // Try to get last error
                 let err = windows::Win32::Foundation::GetLastError();
                 eprintln!("[RexPaper] GetLastError: {:?}", err);
             } else {
-                eprintln!("[RexPaper] SystemParametersInfoW succeeded");
+                eprintln!("[RexPaper] SystemParametersInfoW succeeded (SPIF_SENDCHANGE)");
             }
         }
     }

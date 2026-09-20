@@ -198,7 +198,6 @@ fn main() -> Result<(), slint::PlatformError> {
         use windows::Win32::UI::HiDpi::*;
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-
     let main_window = MainWindow::new()?;
 
     let state: ThreadSafeState = Arc::new(Mutex::new(AppState::default()));
