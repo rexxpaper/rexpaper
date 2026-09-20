@@ -23,6 +23,7 @@ libmpv = { version = "2", features = ["render"] }
 directories = "5.0"
 which = "6.0"
 rayon = "1.10"
+uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
