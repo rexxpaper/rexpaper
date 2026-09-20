@@ -11,6 +11,9 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
         // Terminate any running live wallpaper process and hide the WorkerW canvas
         let _ = crate::platform::windows::stop_live_wallpaper();
 
+        // Brief pause to ensure live wallpaper cleanup (host window destroy, WorkerW restore) is complete
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
         let wide_path: Vec<u16> = OsStr::new(path).encode_wide().chain(Some(0)).collect();
         
         unsafe {
