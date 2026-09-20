@@ -8,8 +8,12 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
 
+        eprintln!("[RexPaper] apply_static_wallpaper called for: {}", path.display());
+        
         // Terminate any running live wallpaper process and hide the WorkerW canvas
+        eprintln!("[RexPaper] Calling stop_live_wallpaper()...");
         let _ = crate::platform::windows::stop_live_wallpaper();
+        eprintln!("[RexPaper] stop_live_wallpaper() returned");
 
         // Brief pause to ensure live wallpaper cleanup (host window destroy, WorkerW restore) is complete
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -18,7 +22,17 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
         // Convert unsupported formats (PNG, WEBP, AVIF, etc.) to a temporary BMP file.
         let bmp_path = ensure_bmp_wallpaper(path)?;
 
-        let wide_path: Vec<u16> = OsStr::new(&bmp_path).encode_wide().chain(Some(0)).collect();
+        // CRITICAL: SystemParametersInfoW requires an ABSOLUTE path
+        let absolute_path = std::fs::canonicalize(&bmp_path)
+            .unwrap_or_else(|_| bmp_path.clone());
+        
+        eprintln!("[RexPaper] Applying static wallpaper (absolute): {}", absolute_path.display());
+        eprintln!("[RexPaper] File exists: {}", absolute_path.exists());
+        
+        let metadata = std::fs::metadata(&absolute_path);
+        eprintln!("[RexPaper] File size: {:?} bytes", metadata.map(|m| m.len()));
+
+        let wide_path: Vec<u16> = OsStr::new(&absolute_path).encode_wide().chain(Some(0)).collect();
         
         unsafe {
             let result = SystemParametersInfoW(
@@ -27,8 +41,14 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
                 Some(wide_path.as_ptr() as *mut _),
                 SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
             );
-            if result.is_err() {
-                eprintln!("[RexPaper] SystemParametersInfoW failed: {:?}", result);
+            if let Err(e) = result {
+                eprintln!("[RexPaper] SystemParametersInfoW ERROR: {:?}", e);
+                
+                // Try to get last error
+                let err = windows::Win32::Foundation::GetLastError();
+                eprintln!("[RexPaper] GetLastError: {:?}", err);
+            } else {
+                eprintln!("[RexPaper] SystemParametersInfoW succeeded");
             }
         }
     }
@@ -42,6 +62,7 @@ fn ensure_bmp_wallpaper(path: &Path) -> Result<std::path::PathBuf, Box<dyn std::
     
     // Already supported format
     if matches!(ext.as_str(), "bmp" | "jpg" | "jpeg") {
+        eprintln!("[RexPaper] Using original file (supported format): {}", path.display());
         return Ok(path.to_path_buf());
     }
 
@@ -50,11 +71,19 @@ fn ensure_bmp_wallpaper(path: &Path) -> Result<std::path::PathBuf, Box<dyn std::
     let temp_name = format!("rexpaper_wallpaper_{}.bmp", uuid::Uuid::new_v4().simple());
     let temp_path = temp_dir.join(temp_name);
 
+    eprintln!("[RexPaper] Converting {} to BMP: {}", path.display(), temp_path.display());
+    
     let img = image::open(path)?;
     let rgb_img = img.to_rgb8();
     rgb_img.save(&temp_path)?;
     
-    eprintln!("[RexPaper] Converted wallpaper to BMP: {}", temp_path.display());
+    if !temp_path.exists() {
+        return Err("Failed to create temporary BMP file".into());
+    }
+    
+    let size = std::fs::metadata(&temp_path)?.len();
+    eprintln!("[RexPaper] Created BMP ({} bytes): {}", size, temp_path.display());
+    
     Ok(temp_path)
 }
 

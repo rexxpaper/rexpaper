@@ -108,9 +108,12 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
 
 pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pid) = *MPV_PROCESS_ID.lock().unwrap() {
+        eprintln!("[RexPaper] Killing live wallpaper mpv process (PID: {})", pid);
+        
+        // Kill ONLY the specific mpv process, NOT the tree (/T would kill Explorer on raised desktop)
         let mut cmd = Command::new("taskkill");
         cmd.creation_flags(CREATE_NO_WINDOW);
-        let _ = cmd.args(["/PID", &pid.to_string(), "/F", "/T"]).status();
+        let _ = cmd.args(["/PID", &pid.to_string(), "/F"]).status();
 
         // Wait for process to fully exit
         if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
@@ -127,6 +130,11 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = unsafe { CloseHandle(handle) };
             }
         }
+        
+        // Also kill any orphan mpv processes spawned by our app (but NOT /T to avoid killing Explorer)
+        let mut cmd = Command::new("taskkill");
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let _ = cmd.args(["/IM", "mpv.exe", "/F"]).status();
     }
     *MPV_PROCESS_ID.lock().unwrap() = None;
     *CURRENT_LIVE_PATH.lock().unwrap() = None;
