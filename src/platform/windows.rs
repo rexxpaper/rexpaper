@@ -135,7 +135,7 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
 
     // Destroy the desktop host window used for the Windows 11 raised-desktop layout FIRST
     // (must be done before RedrawWindow so the static wallpaper can show through)
-    
+
     if let Some(host) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
         let host_hwnd = HWND(host as *mut std::ffi::c_void);
         if !host_hwnd.0.is_null() {
@@ -157,15 +157,40 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
                             0, 0, 0, 0,
                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
                         );
-                        
+
                         eprintln!("[RexPaper] WorkerW restored to front for static wallpaper");
                     }
                 }
+                // Hide host first to avoid visual artifacts
+                let _ = ShowWindow(host_hwnd, SW_HIDE);
                 let _ = DestroyWindow(host_hwnd);
             }
         }
     }
     *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
+
+    // Also try to restore classic WorkerW (for non-raised desktop fallback)
+    unsafe {
+        let progman = get_progman();
+        if !progman.0.is_null() {
+            // Find and show any WorkerW
+            let mut workerw = HWND(std::ptr::null_mut());
+            let _ = EnumWindows(
+                Some(enum_workerw_fallback_proc),
+                LPARAM(&mut workerw as *mut HWND as isize),
+            );
+            if !workerw.0.is_null() {
+                let _ = ShowWindow(workerw, SW_SHOW);
+                let _ = SetWindowPos(
+                    workerw,
+                    None,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                eprintln!("[RexPaper] Classic WorkerW restored");
+            }
+        }
+    }
 
     // Now redraw desktop to show static wallpaper
     unsafe {
@@ -174,6 +199,16 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = RedrawWindow(Some(progman), None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
             }
         }
+        // Broadcast setting change to force system refresh
+        let _ = SendMessageTimeoutW(
+            HWND(0xFFFF as *mut std::ffi::c_void), // HWND_BROADCAST
+            WM_SETTINGCHANGE,
+            WPARAM(SPI_SETDESKWALLPAPER.0 as usize),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG,
+            1000,
+            None,
+        );
     }
 
     Ok(())
