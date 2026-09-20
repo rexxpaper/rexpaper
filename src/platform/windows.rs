@@ -6,6 +6,7 @@ use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Graphics::Gdi::{RedrawWindow, UpdateWindow, RDW_INVALIDATE, RDW_ERASE, RDW_ALLCHILDREN};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::{OpenProcess, GetExitCodeProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::core::BOOL;
 
 static MPV_PROCESS_ID: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
@@ -16,22 +17,33 @@ static DESKTOP_HOST_WINDOW: std::sync::Mutex<Option<usize>> = std::sync::Mutex::
 static HOST_CLASS_REGISTERED: AtomicBool = AtomicBool::new(false);
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 const WS_EX_NOREDIRECTIONBITMAP: isize = 0x00200000;
+/// HWND_BOTTOM sentinel from WinUser.h (1); HWND_TOP is NULL (0).
+const HWND_BOTTOM: HWND = HWND(1 as *mut std::ffi::c_void);
+
+/// Verbose per-call diagnostics are only emitted when REXPAPER_DEBUG is set.
+fn debug_enabled() -> bool {
+    std::env::var_os("REXPAPER_DEBUG").is_some()
+}
 
 pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !video_path.exists() {
         return Err(format!("Video file not found: {}", video_path.display()).into());
     }
 
+    eprintln!("[RexPaper] apply_live_wallpaper called for: {}", video_path.display());
     stop_live_wallpaper()?;
 
     let wallpaper_hwnd = resolve_live_wallpaper_hwnd()?;
     let hwnd = wallpaper_hwnd.0 as usize;
+    eprintln!("[RexPaper] apply_live_wallpaper: Using wallpaper HWND: {:?} (as usize: {})", wallpaper_hwnd.0, hwnd);
     let mpv_exe = find_mpv_executable()?;
 
     // Ensure the desktop wallpaper canvas is visible and active
     unsafe {
-        let _ = ShowWindow(wallpaper_hwnd, SW_SHOW);
-        let _ = UpdateWindow(wallpaper_hwnd);
+        let show_result = ShowWindow(wallpaper_hwnd, SW_SHOW);
+        eprintln!("[RexPaper] apply_live_wallpaper: ShowWindow(SW_SHOW) result: {:?}", show_result);
+        let update_result = UpdateWindow(wallpaper_hwnd);
+        eprintln!("[RexPaper] apply_live_wallpaper: UpdateWindow result: {:?}", update_result);
     }
 
     let mut path_str = video_path.to_string_lossy().to_string();
@@ -77,6 +89,15 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
 
     let child = cmd.spawn()?;
 
+    // Give mpv a moment to attach to the window, then ensure host is visible
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    unsafe {
+        let _ = ShowWindow(wallpaper_hwnd, SW_SHOW);
+        let _ = UpdateWindow(wallpaper_hwnd);
+    }
+    // Re-assert z-order in case mpv's child-window creation disturbed it
+    reassert_live_wallpaper_zorder(wallpaper_hwnd);
+
     *MPV_PROCESS_ID.lock().unwrap() = Some(child.id());
     *CURRENT_LIVE_PATH.lock().unwrap() = Some(video_path.to_path_buf());
     IS_WALLPAPER_ACTIVE.store(true, Ordering::SeqCst);
@@ -87,34 +108,97 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
 
 pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pid) = *MPV_PROCESS_ID.lock().unwrap() {
+        eprintln!("[RexPaper] Killing live wallpaper mpv process (PID: {})", pid);
+        
+        // Kill ONLY the specific mpv process, NOT the tree (/T would kill Explorer on raised desktop)
         let mut cmd = Command::new("taskkill");
         cmd.creation_flags(CREATE_NO_WINDOW);
-        let _ = cmd.args(["/PID", &pid.to_string(), "/F", "/T"]).status();
+        if let Err(e) = cmd.args(["/PID", &pid.to_string(), "/F"]).status() {
+            eprintln!("[RexPaper] taskkill /PID {} failed: {}", pid, e);
+        }
+
+        // Wait for process to fully exit
+        if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+            if !handle.0.is_null() {
+                for _ in 0..50 {
+                    let mut exit_code = 0u32;
+                    if unsafe { GetExitCodeProcess(handle, &mut exit_code) }.is_ok() {
+                        if exit_code != 259 { // STILL_ACTIVE
+                            break;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                let _ = unsafe { CloseHandle(handle) };
+            }
+        }
+        
+        // Also kill any orphan mpv processes spawned by our app (but NOT /T to avoid killing Explorer)
+        let mut cmd = Command::new("taskkill");
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        if let Err(e) = cmd.args(["/IM", "mpv.exe", "/F"]).status() {
+            eprintln!("[RexPaper] taskkill /IM mpv.exe failed: {}", e);
+        }
     }
     *MPV_PROCESS_ID.lock().unwrap() = None;
     *CURRENT_LIVE_PATH.lock().unwrap() = None;
     IS_WALLPAPER_ACTIVE.store(false, Ordering::SeqCst);
     IS_PAUSED_FOR_FULLSCREEN.store(false, Ordering::SeqCst);
 
-    // Redraw desktop wallpaper / icons
-    unsafe {
-        if let Ok(progman) = FindWindowW(windows::core::w!("Progman"), None) {
-            if !progman.0.is_null() {
-                let _ = RedrawWindow(Some(progman), None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
-            }
-        }
-    }
+    // Destroy the desktop host window used for the Windows 11 raised-desktop layout FIRST
+    // (must be done before RedrawWindow so the static wallpaper can show through)
 
-    // Destroy the desktop host window used for the Windows 11 raised-desktop layout
     if let Some(host) = *DESKTOP_HOST_WINDOW.lock().unwrap() {
         let host_hwnd = HWND(host as *mut std::ffi::c_void);
         if !host_hwnd.0.is_null() {
             unsafe {
+                // Hide the host first to avoid visual artifacts, then destroy it.
+                // Note: we must NOT touch the raised-desktop WorkerW here - it already
+                // sits at the bottom of Progman's children where the static wallpaper
+                // belongs, and raising it to HWND_TOP would paint over the desktop icons.
+                let _ = ShowWindow(host_hwnd, SW_HIDE);
                 let _ = DestroyWindow(host_hwnd);
             }
         }
     }
     *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
+
+    // Also try to restore classic WorkerW (for non-raised desktop fallback). Gated on
+    // the raised-desktop check: the raised WorkerW must not be touched (see above).
+    unsafe {
+        let progman = get_progman();
+        if !progman.0.is_null() && !is_raised_desktop(progman) {
+            // Find and show any WorkerW
+            let mut workerw = HWND(std::ptr::null_mut());
+            let _ = EnumWindows(
+                Some(enum_workerw_fallback_proc),
+                LPARAM(&mut workerw as *mut HWND as isize),
+            );
+            if !workerw.0.is_null() {
+                let _ = ShowWindow(workerw, SW_SHOW);
+                let _ = SetWindowPos(
+                    workerw,
+                    None,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                eprintln!("[RexPaper] Classic WorkerW restored");
+            }
+        }
+    }
+
+    // Redraw the desktop so the static wallpaper shows through - but ONLY on the classic
+    // desktop. On the raised desktop repainting Progman (which carries
+    // WS_EX_NOREDIRECTIONBITMAP) destroys the child WorkerW that renders the wallpaper;
+    // Lively's RefreshDesktop() is likewise a no-op there ("otherwise will destroy the
+    // current WorkerW"). The raised-desktop refresh is handled by SPIF_SENDCHANGE inside
+    // apply_static_wallpaper() instead.
+    unsafe {
+        let progman = get_progman();
+        if !progman.0.is_null() && !is_raised_desktop(progman) {
+            let _ = RedrawWindow(Some(progman), None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+        }
+    }
 
     Ok(())
 }
@@ -210,7 +294,9 @@ pub fn pause_for_fullscreen() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(pid) = *MPV_PROCESS_ID.lock().unwrap() {
             let mut cmd = Command::new("taskkill");
             cmd.creation_flags(CREATE_NO_WINDOW);
-            let _ = cmd.args(["/PID", &pid.to_string(), "/F"]).status();
+            if let Err(e) = cmd.args(["/PID", &pid.to_string(), "/F"]).status() {
+                eprintln!("[RexPaper] taskkill /PID {} failed: {}", pid, e);
+            }
         }
         *MPV_PROCESS_ID.lock().unwrap() = None;
         IS_WALLPAPER_ACTIVE.store(false, Ordering::SeqCst);
@@ -247,6 +333,10 @@ fn get_progman() -> HWND {
 }
 
 /// Sends the undocumented 0x052C message to Progman to spawn/refresh the wallpaper layer.
+///
+/// Only the (0xD, 0x1) combination is used: it is the canonical message (watson / Lively)
+/// that spawns the wallpaper WorkerW. A trailing (0xD, 0x0) message would hide/remove the
+/// just-created WorkerW again, which is why the wallpaper layer was never found before.
 fn spawn_workerw_layers(progman: HWND) {
     unsafe {
         let mut res: usize = 0;
@@ -259,15 +349,6 @@ fn spawn_workerw_layers(progman: HWND) {
             1000,
             Some(&mut res),
         );
-        let _ = SendMessageTimeoutW(
-            progman,
-            0x052C,
-            WPARAM(0x0000000D),
-            LPARAM(0x00000000),
-            SMTO_NORMAL,
-            1000,
-            Some(&mut res),
-        );
     }
 }
 
@@ -275,13 +356,18 @@ fn spawn_workerw_layers(progman: HWND) {
 /// Progman carries WS_EX_NOREDIRECTIONBITMAP and the shell views are layered children.
 fn is_raised_desktop(progman: HWND) -> bool {
     unsafe {
-        let ex_style = GetWindowLongPtrW(progman, windows::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE);
-        let err = GetLastError();
-        if ex_style == 0 && err.0 != 0 {
-            eprintln!("[RexPaper] GetWindowLongPtrW failed: {:?}, assuming classic desktop", err);
-            return false;
+        let ex_style = GetWindowLongPtrW(progman, GWL_EXSTYLE);
+        // ex_style == 0 (with or without last-error) implies no NOREDIRECTIONBITMAP ->
+        // classic desktop, same conclusion either way.
+        let is_raised = (ex_style & WS_EX_NOREDIRECTIONBITMAP) != 0;
+        if debug_enabled() {
+            let err = GetLastError();
+            eprintln!(
+                "[RexPaper] is_raised_desktop: Progman={:?}, ex_style=0x{:X}, WS_EX_NOREDIRECTIONBITMAP=0x{:X}, is_raised={} (last_error={:?})",
+                progman.0, ex_style, WS_EX_NOREDIRECTIONBITMAP, is_raised, err
+            );
         }
-        (ex_style & WS_EX_NOREDIRECTIONBITMAP) != 0
+        is_raised
     }
 }
 
@@ -310,11 +396,103 @@ unsafe extern "system" fn enum_child_workerw_proc(hwnd: HWND, lparam: LPARAM) ->
     }
 }
 
+unsafe extern "system" fn enum_child_defview_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    unsafe {
+        let mut class_name = [0u16; 256];
+        let len = GetClassNameW(hwnd, &mut class_name);
+        if len > 0 {
+            let name = String::from_utf16_lossy(&class_name[..len as usize]);
+            if name == "SHELLDLL_DefView" {
+                let ptr = lparam.0 as *mut HWND;
+                *ptr = hwnd;
+                return BOOL(0);
+            }
+        }
+        BOOL(1)
+    }
+}
+
+/// Finds the desktop-icons view (SHELLDLL_DefView) under Progman: direct child first
+/// (the common raised-desktop layout), then any depth for layouts that nest it inside
+/// a child WorkerW.
+fn find_defview_under(progman: HWND) -> Option<HWND> {
+    unsafe {
+        if let Ok(dv) =
+            FindWindowExW(Some(progman), None, windows::core::w!("SHELLDLL_DefView"), None)
+        {
+            if !dv.0.is_null() {
+                return Some(dv);
+            }
+        }
+        let mut found = HWND(std::ptr::null_mut());
+        let _ = EnumChildWindows(
+            Some(progman),
+            Some(enum_child_defview_proc),
+            LPARAM(&mut found as *mut HWND as isize),
+        );
+        if found.0.is_null() { None } else { Some(found) }
+    }
+}
+
+/// Finds the wallpaper worker window (WorkerW) under Progman: direct child first with
+/// an EnumChildWindows fallback.
+fn find_workerw_under(progman: HWND) -> Option<HWND> {
+    unsafe {
+        if let Ok(ww) = FindWindowExW(Some(progman), None, windows::core::w!("WorkerW"), None) {
+            if !ww.0.is_null() {
+                return Some(ww);
+            }
+        }
+        let mut found = HWND(std::ptr::null_mut());
+        let _ = EnumChildWindows(
+            Some(progman),
+            Some(enum_child_workerw_proc),
+            LPARAM(&mut found as *mut HWND as isize),
+        );
+        if found.0.is_null() { None } else { Some(found) }
+    }
+}
+
+/// Re-asserts the raised-desktop live wallpaper stacking after mpv spawns its child
+/// window (which can disturb the z-order): DefView (icons) on top, host in the middle,
+/// WorkerW (static wallpaper) at the bottom. No-op on classic desktops, where the video
+/// renders directly into the top-level WorkerW.
+fn reassert_live_wallpaper_zorder(host: HWND) {
+    let progman = get_progman();
+    if progman.0.is_null() || !is_raised_desktop(progman) {
+        return;
+    }
+
+    unsafe {
+        if let Some(defview) = find_defview_under(progman) {
+            let _ = SetWindowPos(
+                host,
+                Some(defview),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+
+        if let Some(workerw) = find_workerw_under(progman) {
+            // HWND_BOTTOM == (HWND)1 (HWND_TOP == NULL)
+            let _ = SetWindowPos(
+                workerw,
+                Some(HWND_BOTTOM),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
 /// Creates (or reuses) a layered, fully opaque host window parented to Progman and
 /// z-ordered between the desktop icons (SHELLDLL_DefView) and the system wallpaper
 /// layer. mpv renders into this window via `--wid` for the raised-desktop layout.
 fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>> {
-    // Hold the lock for the entire check-and-create to prevent races
+    // Lock only around check-and-create so the handle is published to
+    // stop_live_wallpaper() before the slower lookup/positioning below; holding the
+    // lock across the retry sleeps would stall concurrent callers (e.g. the
+    // fullscreen-monitor resume thread) for up to ~1s.
     let mut guard = DESKTOP_HOST_WINDOW.lock().unwrap();
 
     // Check if we already have a valid host window
@@ -325,6 +503,102 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
         }
     }
 
+    let hwnd = create_host_window(progman)?;
+
+    // Publish the handle before the slow lookup/positioning below so a concurrent
+    // caller never creates a second host; it will reuse this one instead.
+    *guard = Some(hwnd.0 as usize);
+    drop(guard);
+
+    // Locate the two Progman children we stack between: SHELLDLL_DefView (icons) on
+    // top and the wallpaper WorkerW at the bottom. The 0x052C spawn is async, so
+    // retry with a re-send until both exist.
+    let mut defview = HWND(std::ptr::null_mut());
+    let mut workerw = HWND(std::ptr::null_mut());
+    for attempt in 0..8 {
+        if defview.0.is_null() {
+            if let Some(dv) = find_defview_under(progman) {
+                defview = dv;
+                eprintln!("[RexPaper] ensure_host_window: found SHELLDLL_DefView {:?}", defview.0);
+            }
+        }
+        if workerw.0.is_null() {
+            spawn_workerw_layers(progman);
+            if let Some(ww) = find_workerw_under(progman) {
+                workerw = ww;
+                eprintln!("[RexPaper] ensure_host_window: found WorkerW {:?} on attempt {}", workerw.0, attempt + 1);
+            }
+        }
+        if !defview.0.is_null() && !workerw.0.is_null() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    if defview.0.is_null() {
+        // Safety: without the icons view we cannot position the host correctly, and an
+        // opaque full-screen window at an arbitrary z-order could cover the whole
+        // desktop. Fail loudly instead of showing it.
+        unsafe {
+            let _ = DestroyWindow(hwnd);
+        }
+        *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
+        return Err("SHELLDLL_DefView not found under Progman; refusing to place opaque host".into());
+    }
+
+    unsafe {
+        // Place the host layer directly below the desktop icons.
+        if let Err(e) = SetWindowPos(
+            hwnd,
+            Some(defview),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        ) {
+            eprintln!("[RexPaper] SetWindowPos (host below DefView) failed: {}", e);
+        }
+
+        // Push the system wallpaper layer to the bottom (HWND_BOTTOM) so the final
+        // z-order is: DefView (icons), this host (video), WorkerW (static wallpaper).
+        if !workerw.0.is_null() {
+            if let Err(e) = SetWindowPos(
+                workerw,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            ) {
+                eprintln!("[RexPaper] SetWindowPos (WorkerW to bottom) failed: {}", e);
+            } else {
+                eprintln!("[RexPaper] WorkerW pushed to bottom below host");
+            }
+        } else {
+            eprintln!("[RexPaper] Warning: WorkerW not found after retries, wallpaper layer may misbehave");
+        }
+
+        if IsWindow(Some(hwnd)).as_bool() {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            Ok(hwnd)
+        } else {
+            // A concurrent stop_live_wallpaper() destroyed the host mid-setup.
+            *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
+            Err("host window destroyed during setup".into())
+        }
+    }
+}
+
+/// Creates the layered, fully opaque host canvas window. Known-good recipe: creating
+/// the window directly as a WS_CHILD under a FOREIGN process's parent (explorer.exe's
+/// Progman) fails with ERROR_MOD_NOT_FOUND (0x8007007E) because the class lives in our
+/// module, not explorer's - so create it as a plain top-level window with WS_EX_LAYERED
+/// at creation time (Lively notes some renderers fail to apply it once the window is
+/// already parented), then SetParent it onto Progman and convert its style to WS_CHILD
+/// so it stacks among Progman's own children. Caller must hold DESKTOP_HOST_WINDOW.
+fn create_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>> {
     unsafe {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = windows::core::w!("RexPaperLiveHost");
@@ -359,7 +633,7 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
             y,
             width,
             height,
-            Some(progman),
+            None,
             None,
             Some(hinstance.into()),
             None,
@@ -375,53 +649,19 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
             eprintln!("[RexPaper] SetLayeredWindowAttributes failed: {}", e);
         }
 
+        // Reparent onto the desktop (explorer's Progman). Cross-process SetParent is fine.
         if let Err(e) = SetParent(hwnd, Some(progman)) {
             eprintln!("[RexPaper] SetParent failed: {}", e);
         }
 
-        // Place the host layer below the desktop icons (z-order after SHELLDLL_DefView)
-        if let Ok(defview) =
-            FindWindowExW(Some(progman), None, windows::core::w!("SHELLDLL_DefView"), None)
-        {
-            if !defview.0.is_null() {
-                if let Err(e) = SetWindowPos(
-                    hwnd,
-                    Some(defview),
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                ) {
-                    eprintln!("[RexPaper] SetWindowPos (host below DefView) failed: {}", e);
-                }
-            }
+        // Convert to a child window so it is stacked among Progman's own children.
+        let cur = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        let new_style = (cur as u32 | WS_CHILD.0) & !WS_POPUP.0;
+        let prev = SetWindowLongPtrW(hwnd, GWL_STYLE, new_style as isize);
+        if prev == 0 && GetLastError().0 != 0 {
+            eprintln!("[RexPaper] SetWindowLongPtrW(GWL_STYLE) failed");
         }
 
-        // Push the system wallpaper WorkerW layer behind the host window
-        let mut workerw = HWND(std::ptr::null_mut());
-        let _ = EnumChildWindows(
-            Some(progman),
-            Some(enum_child_workerw_proc),
-            LPARAM(&mut workerw as *mut HWND as isize),
-        );
-        if !workerw.0.is_null() {
-            if let Err(e) = SetWindowPos(
-                workerw,
-                Some(hwnd),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            ) {
-                eprintln!("[RexPaper] SetWindowPos (WorkerW behind host) failed: {}", e);
-            }
-        }
-
-        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-
-        *guard = Some(hwnd.0 as usize);
         Ok(hwnd)
     }
 }
@@ -439,14 +679,20 @@ fn resolve_live_wallpaper_hwnd() -> Result<HWND, Box<dyn std::error::Error>> {
     }
 
     if is_raised_desktop(progman) {
+        // On raised desktop, spawn layers and wait briefly for WorkerW to be created
         spawn_workerw_layers(progman);
+        std::thread::sleep(std::time::Duration::from_millis(200));
         match ensure_host_window(progman) {
             Ok(host) if !host.0.is_null() => return Ok(host),
             Ok(_) => eprintln!("[RexPaper] ensure_host_window returned null handle"),
             Err(e) => eprintln!("[RexPaper] ensure_host_window failed: {}", e),
         }
+        // On raised desktop, do NOT fall back to classic (EnumWindows doesn'"'"'t find child WorkerW)
+        eprintln!("[RexPaper] Raised desktop: host window creation failed, returning Progman as last resort");
+        return Ok(progman);
     } else {
         spawn_workerw_layers(progman);
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     find_workerw_classic(progman)
