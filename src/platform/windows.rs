@@ -193,22 +193,15 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Now redraw desktop to show static wallpaper
+    // Note: We do NOT broadcast WM_SETTINGCHANGE here because SystemParametersInfoW
+    // with SPIF_SENDCHANGE in apply_static_wallpaper() will handle that.
+    // Double broadcast can cause File Explorer to open unexpectedly.
     unsafe {
         if let Ok(progman) = FindWindowW(windows::core::w!("Progman"), None) {
             if !progman.0.is_null() {
                 let _ = RedrawWindow(Some(progman), None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
             }
         }
-        // Broadcast setting change to force system refresh
-        let _ = SendMessageTimeoutW(
-            HWND(0xFFFF as *mut std::ffi::c_void), // HWND_BROADCAST
-            WM_SETTINGCHANGE,
-            WPARAM(SPI_SETDESKWALLPAPER.0 as usize),
-            LPARAM(0),
-            SMTO_ABORTIFHUNG,
-            1000,
-            None,
-        );
     }
 
     Ok(())
