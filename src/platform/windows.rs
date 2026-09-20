@@ -111,6 +111,22 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Command::new("taskkill");
         cmd.creation_flags(CREATE_NO_WINDOW);
         let _ = cmd.args(["/PID", &pid.to_string(), "/F", "/T"]).status();
+
+        // Wait for process to fully exit
+        if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+            if !handle.0.is_null() {
+                for _ in 0..50 {
+                    let mut exit_code = 0u32;
+                    if unsafe { GetExitCodeProcess(handle, &mut exit_code) }.is_ok() {
+                        if exit_code != 259 { // STILL_ACTIVE
+                            break;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                let _ = unsafe { CloseHandle(handle) };
+            }
+        }
     }
     *MPV_PROCESS_ID.lock().unwrap() = None;
     *CURRENT_LIVE_PATH.lock().unwrap() = None;
