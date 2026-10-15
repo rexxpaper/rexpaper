@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-blue?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.6-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/rust-edition%202024-orange?style=flat-square&logo=rust" alt="Rust Edition 2024" />
   <img src="https://img.shields.io/badge/tauri-v2-24C8DB?style=flat-square&logo=tauri" alt="Tauri v2" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License GPL-3.0" />
@@ -42,7 +42,7 @@ It manages thousands of ultra-high-resolution 4K/8K static wallpapers or renders
 
 ## Current Status
 
-_Last updated 2026-10-08._
+_Last updated 2026-10-15._
 
 **Working today** (verified with `npm run tauri dev`):
 
@@ -62,7 +62,7 @@ In planned order, one commit per slice:
 2. **Live gallery** — video thumbnails, hover preview over range-request URLs, apply / stop controls.
 3. **Settings + tray + window behavior** — toggle UI, system tray menu (Open, Static, Live, Settings, Pause, Next, Open Folder, Quit), tray-driven routing, hidden start on `--autostart`/`--minimized`, restore active wallpaper on startup, fullscreen-pause thread.
 4. **README visual refresh** — screenshot of the new UI once the galleries exist.
-5. **Packaging + CI** — NSIS installer via `tauri build` with mpv DLL staging, rebuilt release workflow.
+5. **Packaging + CI** — done: a standalone, offline NSIS installer (bundled `mpv.exe`, embedded WebView2 bootstrapper) plus a tag-driven release workflow. See [Getting Started](#getting-started).
 
 Known dev-workaround: the registry write for "run on startup" must stay guarded out of debug builds so dev runs cannot hijack the installed v1 autostart entry.
 
@@ -132,17 +132,21 @@ Known dev-workaround: the registry write for "run on startup" must stay guarded 
 - [Rust & Cargo](https://www.rust-lang.org/tools/install) (Edition 2024 / 1.85+)
 - [Node.js](https://nodejs.org/) 20+
 - Windows 10 SDK or later
-- mpv runtime (`mpv/mpv.exe`) — required to run live wallpapers
+- mpv runtime — staged automatically by `scripts/fetch-mpv.ps1` into `src-tauri/mpv/mpv.exe` (downloads a pinned x86_64 build; required for live wallpapers)
+- [7-Zip](https://www.7-zip.org/) — used by the fetch script to extract the mpv archive
 
 ### Build and Run
 
 ```powershell
 # Clone the repository
-git clone https://github.com/theabsoluteray/rexpaper.git
+git clone https://github.com/rexxpaper/rexpaper.git
 cd rexpaper
 
 # Install frontend dependencies (first time)
 npm install
+
+# Stage the mpv runtime (first time, ~114 MB, needs 7-Zip)
+pwsh ./scripts/fetch-mpv.ps1
 
 # Development mode (Vite dev server + Tauri window)
 npm run tauri dev
@@ -152,6 +156,25 @@ npm run tauri build
 ```
 
 `cargo build` on its own builds the workspace (core + app), but the app needs the Vite dev server or a built `frontend/dist` to render — use `npm run tauri dev`.
+
+### Installer
+
+`npm run tauri build` produces a **standalone, offline** installer at:
+
+```
+src-tauri/target/release/bundle/nsis/RexPaper_<version>_x64-setup.exe
+```
+
+It bundles the mpv runtime and uses an embedded WebView2 bootstrapper, so it installs and runs without downloading anything. It installs per-user (no admin prompt) and is currently **unsigned** — Windows SmartScreen may show a warning on first run until the download builds reputation.
+
+### Releases
+
+Releases are built by the `Release` GitHub Actions workflow. Push a version tag and it builds the installer and attaches it to a GitHub release:
+
+```powershell
+git tag v1.0.6
+git push origin v1.0.6
+```
 
 ---
 
@@ -177,7 +200,8 @@ rexpaper/
 │   └── tauri.conf.json      # Window, dev server, NSIS bundle config
 ├── frontend/                # Preact + Vite + TypeScript + Tailwind
 │   └── src/                 # App, pages, typed API mirror
-├── mpv/                     # mpv runtime binary (mpv.exe, local)
+├── scripts/fetch-mpv.ps1    # Downloads the pinned mpv runtime
+├── src-tauri/mpv/           # mpv runtime binary (mpv.exe, fetched, not committed)
 ├── docs/specs/              # Design specs
 └── LICENSE                  # GNU General Public License v3.0
 ```
@@ -192,7 +216,7 @@ rexpaper/
 - [ ] **Static gallery page** &mdash; grid, categories, search, lazy thumbnails, apply.
 - [ ] **Live gallery page** &mdash; video thumbnails and playback controls.
 - [ ] **Settings page** &mdash; directory pickers, toggles, tray + autostart wiring.
-- [ ] **NSIS packaging + release CI** &mdash; `tauri build` installers.
+- [x] **NSIS packaging + release CI** &mdash; standalone offline installer (bundled mpv) and a tag-driven GitHub Actions release workflow.
 - [ ] **Multi-Monitor Wallpaper Assignment** &mdash; Assign independent wallpapers per display monitor.
 - [ ] **Granular Live Audio Volume Slider** &mdash; In-app slider to adjust live wallpaper volume levels.
 

@@ -1,6 +1,6 @@
 [package]
 name = "rexpaper-core"
-version = "1.0.3"
+version = "1.0.6"
 edition = "2024"
 description = "UI-free core engine for RexPaper: scanning, thumbnails, wallpaper application, platform integration"
 license = "GPL-3.0"

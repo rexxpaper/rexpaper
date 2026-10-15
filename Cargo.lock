@@ -3457,7 +3457,7 @@ dependencies = [
 
 [[package]]
 name = "rexpaper"
-version = "1.0.3"
+version = "1.0.6"
 dependencies = [
  "rand 0.9.5",
  "rexpaper-core",
@@ -3469,7 +3469,7 @@ dependencies = [
 
 [[package]]
 name = "rexpaper-core"
-version = "1.0.3"
+version = "1.0.6"
 dependencies = [
  "directories",
  "image",
