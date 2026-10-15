@@ -271,6 +271,16 @@ pub fn start_fullscreen_monitor(
                     .unwrap_or(true);
 
                 if !pause_enabled {
+                    // Turning the setting off while a fullscreen-induced pause is
+                    // active must also lift that pause; otherwise the wallpaper
+                    // stays frozen with no way back except a manual resume.
+                    if IS_PAUSED_FOR_FULLSCREEN.swap(false, Ordering::SeqCst) {
+                        let saved_path = CURRENT_LIVE_PATH.lock().unwrap().clone();
+                        if let Some(path) = saved_path {
+                            let _ = resume_after_fullscreen(&path);
+                            on_pause_change(false);
+                        }
+                    }
                     continue;
                 }
 
@@ -695,7 +705,7 @@ fn resolve_live_wallpaper_hwnd() -> Result<HWND, Box<dyn std::error::Error>> {
             Ok(_) => eprintln!("[RexPaper] ensure_host_window returned null handle"),
             Err(e) => eprintln!("[RexPaper] ensure_host_window failed: {}", e),
         }
-        // On raised desktop, do NOT fall back to classic (EnumWindows doesn'"'"'t find child WorkerW)
+        // On raised desktop, do NOT fall back to classic (EnumWindows doesn't find child WorkerW)
         eprintln!("[RexPaper] Raised desktop: host window creation failed, returning Progman as last resort");
         return Ok(progman);
     } else {

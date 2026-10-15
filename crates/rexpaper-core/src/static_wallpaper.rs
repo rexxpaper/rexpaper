@@ -46,15 +46,52 @@ pub fn apply_static_wallpaper(path: &Path) -> Result<(), Box<dyn std::error::Err
                 SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
             );
             if let Err(e) = result {
-                eprintln!("[RexPaper] SystemParametersInfoW ERROR: {:?}", e);
+                // Surface the failure: the command layer records the wallpaper as
+                // active on Ok, so returning Ok here would leave settings claiming
+                // a wallpaper that Windows never actually applied.
                 let err = windows::Win32::Foundation::GetLastError();
-                eprintln!("[RexPaper] GetLastError: {:?}", err);
-            } else {
-                eprintln!("[RexPaper] SystemParametersInfoW succeeded (SPIF_SENDCHANGE)");
+                eprintln!(
+                    "[RexPaper] SystemParametersInfoW failed for {}: {:?} (GetLastError: {:?})",
+                    absolute_path.display(),
+                    e,
+                    err
+                );
+                return Err(format!(
+                    "Windows could not apply {} as the desktop wallpaper.",
+                    path.display()
+                )
+                .into());
             }
+            eprintln!("[RexPaper] SystemParametersInfoW succeeded (SPIF_SENDCHANGE)");
         }
+
+        // Reclaim temp BMPs produced by earlier conversions. Only reached after a
+        // successful apply, so the currently registered wallpaper is never deleted.
+        cleanup_stale_temp_bmps(&bmp_path);
     }
     Ok(())
+}
+
+/// Removes leftover `rexpaper_wallpaper_*.bmp` files created by earlier
+/// conversions, keeping `keep` (the file just registered as the desktop
+/// wallpaper). Each PNG/WEBP/AVIF apply writes a multi-megabyte BMP to %TEMP%;
+/// without this they accumulate indefinitely.
+#[cfg(target_os = "windows")]
+fn cleanup_stale_temp_bmps(keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path == keep {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with("rexpaper_wallpaper_") && name.ends_with(".bmp") {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 /// Ensures the wallpaper file is in a format supported by SystemParametersInfoW (BMP/JPG).
