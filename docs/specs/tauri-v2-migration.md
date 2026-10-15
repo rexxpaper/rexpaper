@@ -124,10 +124,11 @@ no neon, no glow, no decorative AI-generated visual filler.
 - **Core extraction**: current `src/` (excluding `main.rs` and Slint bindings)
   becomes the `rexpaper-core` library crate. `src-tauri` depends on it by path.
   Ownership: core keeps `scanner`, `thumbnail`, `settings`, `static_wallpaper`,
-  `live_wallpaper`, `mpv_player`, `models`, `platform`.
+  `models`, `platform`.
 - **Video preview**: streamed via Tauri's HTTP asset protocol with `Range`
   support; the `<video>` element uses MediaSource/range requests against
-  `tauri://localhost`-style URLs. No in-app libmpv rendering in v2 preview.
+  `tauri://localhost`-style URLs. No in-app mpv rendering (live wallpapers are
+  spawned as a separate `mpv.exe` child process behind the desktop icons).
 - **Thumbnails**: standard `<img loading="lazy">` plus CSS
   `content-visibility: auto` on grid rows. Virtualization deferred unless
   profiling shows it is needed.
@@ -136,8 +137,7 @@ no neon, no glow, no decorative AI-generated visual filler.
   Folder, Quit. Tray icon rendering keeps the v1 embedded-icon resource so
   DPI metrics stay correct.
 - **Settings**: persisted by core's own `Settings::load()/save()` over a
-  managed `Arc<Mutex<Settings>>` (the `tauri-plugin-store` dependency is
-  pinned but its wiring is deferred). The active file is the ProjectDirs path
+  managed `Arc<Mutex<Settings>>`. The active file is the ProjectDirs path
   `%APPDATA%/rexpaper/RexPaper/config/settings.json`, shared byte-for-byte
   with the installed v1 app, so no first-run migration is needed; the legacy
   `%APPDATA%/rexpaper/settings.json` is a stale fallback read only when the
@@ -159,7 +159,7 @@ no neon, no glow, no decorative AI-generated visual filler.
 - **Naming**: the app package in `src-tauri/` is named `rexpaper` (binary
   `rexpaper.exe`); `productName` stays `RexPaper`; the directory name
   `src-tauri/` is the Tauri CLI convention and does not affect naming.
-- **Packaging**: Tauri bundler with NSIS; mpv binaries/DLLs staged via Tauri's
+- **Packaging**: Tauri bundler with NSIS; the mpv runtime binary staged via Tauri's
   `resources`/`externalBin` config plus a post-build copy step equivalent to
   v1 `build.rs`.
 - **Window**: min 900×640, default ~1200×800 windowed and centered on normal
@@ -196,7 +196,7 @@ state layout.
   not part of this migration).
 - Volume slider for live wallpapers (remains on the roadmap).
 - Third-party JS plugin/extension system.
-- In-app live wallpaper preview using libmpv rendering inside the WebView.
+- In-app live wallpaper preview inside the WebView.
 - Redesign of the WorkerW/mpv desktop injection mechanism (ported as-is).
 - WiX MSI packaging (removed with the Slint app; releases of historical v1
   tags still work because GitHub runs the workflow at that ref. New

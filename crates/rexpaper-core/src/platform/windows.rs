@@ -133,13 +133,14 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         
-        // Also kill any orphan mpv processes spawned by our app (but NOT /T to avoid killing Explorer)
-        let mut cmd = Command::new("taskkill");
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        if let Err(e) = cmd.args(["/IM", "mpv.exe", "/F"]).status() {
-            eprintln!("[RexPaper] taskkill /IM mpv.exe failed: {}", e);
-        }
     }
+
+    // Sweep up any mpv left behind by a previous run (e.g. after a crash).
+    // Unlike `taskkill /IM mpv.exe`, this touches only processes running
+    // RexPaper's own mpv executable, so a user's unrelated mpv playback is
+    // never terminated.
+    kill_stray_managed_mpv();
+
     *MPV_PROCESS_ID.lock().unwrap() = None;
     *CURRENT_LIVE_PATH.lock().unwrap() = None;
     IS_WALLPAPER_ACTIVE.store(false, Ordering::SeqCst);
@@ -809,6 +810,79 @@ unsafe extern "system" fn enum_workerw_fallback_proc(hwnd: HWND, lparam: LPARAM)
             }
         }
         BOOL(1)
+    }
+}
+
+/// Terminates leftover RexPaper-managed `mpv.exe` processes without touching a
+/// user's own mpv. A process is killed only when its full image path equals the
+/// mpv executable RexPaper launches; unrelated mpv processes are left alone.
+fn kill_stray_managed_mpv() {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+
+    let Ok(our_mpv) = find_mpv_executable() else {
+        return;
+    };
+    let our_mpv = our_mpv.to_string_lossy().to_lowercase();
+
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return;
+        };
+
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                let name_len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let name = String::from_utf16_lossy(&entry.szExeFile[..name_len]);
+                if name.eq_ignore_ascii_case("mpv.exe") {
+                    if let Some(path) = process_image_path(entry.th32ProcessID) {
+                        if path.to_lowercase() == our_mpv {
+                            let mut cmd = Command::new("taskkill");
+                            cmd.creation_flags(CREATE_NO_WINDOW);
+                            let _ = cmd
+                                .args(["/PID", &entry.th32ProcessID.to_string(), "/F"])
+                                .status();
+                        }
+                    }
+                }
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+    }
+}
+
+/// Best-effort full image path for `pid`, or `None` when it cannot be queried.
+fn process_image_path(pid: u32) -> Option<String> {
+    use windows::Win32::System::Threading::QueryFullProcessImageNameW;
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = vec![0u16; 32768];
+        let mut len = buf.len() as u32;
+        let result = QueryFullProcessImageNameW(
+            handle,
+            windows::Win32::System::Threading::PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+        result.ok()?;
+        Some(String::from_utf16_lossy(&buf[..len as usize]))
     }
 }
 

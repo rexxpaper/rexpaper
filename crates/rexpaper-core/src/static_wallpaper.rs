@@ -125,8 +125,3 @@ fn ensure_bmp_wallpaper(path: &Path) -> Result<std::path::PathBuf, Box<dyn std::
     
     Ok(temp_path)
 }
-
-pub fn scan_and_load_static(root: &Path, state: crate::SharedState) -> Result<(), Box<dyn std::error::Error>> {
-    crate::scanner::scan_static(root, state)?;
-    Ok(())
-}
