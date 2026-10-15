@@ -4,12 +4,18 @@ import {
   applyLive,
   applyStatic,
   getSettings,
+  nextWallpaper,
+  openInExplorer,
   pickLiveWallpaperDir,
   pickWallpaperDir,
   resolveThumbnails,
   scanLive,
   scanStatic,
+  setMuteLiveWallpapers,
+  setPauseOnFullscreen,
+  setRunOnStartup,
   stopLive,
+  toggleLivePause,
   type LiveWallpaperItem,
   type Settings,
   type ThumbnailBatch,
@@ -54,6 +60,8 @@ export const liveSearch = signal("");
 export const applying = signal<string | null>(null);
 export const stopping = signal(false);
 export const galleryError = signal<string | null>(null);
+export const livePaused = signal(false);
+export const pausing = signal(false);
 
 export const thumbStates = signal<Record<string, ThumbState>>({});
 export const thumbPendingCount = computed(
@@ -147,6 +155,7 @@ export async function applyLiveWallpaper(path: string): Promise<void> {
   galleryError.value = null;
   try {
     settings.value = await applyLive(path);
+    livePaused.value = false;
   } catch (err) {
     galleryError.value = errorMessage(err);
   } finally {
@@ -161,10 +170,78 @@ export async function stopLiveWallpaper(): Promise<void> {
   galleryError.value = null;
   try {
     settings.value = await stopLive();
+    livePaused.value = false;
   } catch (err) {
     galleryError.value = errorMessage(err);
   } finally {
     stopping.value = false;
+  }
+}
+
+// Settings actions -----------------------------------------------------------
+
+export async function toggleRunOnStartup(enabled: boolean): Promise<void> {
+  settingsError.value = null;
+  try {
+    settings.value = await setRunOnStartup(enabled);
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  }
+}
+
+export async function togglePauseOnFullscreen(enabled: boolean): Promise<void> {
+  settingsError.value = null;
+  try {
+    settings.value = await setPauseOnFullscreen(enabled);
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  }
+}
+
+export async function toggleMuteLiveWallpapers(enabled: boolean): Promise<void> {
+  settingsError.value = null;
+  try {
+    settings.value = await setMuteLiveWallpapers(enabled);
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  }
+}
+
+/** Applies a random wallpaper from the library (Settings → Status). */
+export async function applyRandomWallpaper(): Promise<void> {
+  if (applying.value !== null) return;
+  applying.value = "next";
+  settingsError.value = null;
+  try {
+    settings.value = await nextWallpaper();
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  } finally {
+    applying.value = null;
+  }
+}
+
+/** Reveals a path in Explorer; errors surface on the Settings page. */
+export async function openFolder(path: string): Promise<void> {
+  settingsError.value = null;
+  try {
+    await openInExplorer(path);
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  }
+}
+
+/** Pauses/resumes the active live wallpaper; follows up via `livePaused`. */
+export async function toggleLiveWallpaperPause(): Promise<void> {
+  if (pausing.value) return;
+  pausing.value = true;
+  settingsError.value = null;
+  try {
+    livePaused.value = await toggleLivePause();
+  } catch (err) {
+    settingsError.value = errorMessage(err);
+  } finally {
+    pausing.value = false;
   }
 }
 

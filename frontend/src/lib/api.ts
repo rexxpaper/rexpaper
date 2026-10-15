@@ -66,6 +66,17 @@ export const applyLive = (path: string): Promise<Settings> =>
 
 export const stopLive = (): Promise<Settings> => invoke("stop_live");
 
+/** Applies a random wallpaper from the static library. */
+export const nextWallpaper = (): Promise<Settings> => invoke("next_wallpaper");
+
+/** Reveals the path in Windows Explorer with the file pre-selected. */
+export const openInExplorer = (path: string): Promise<void> =>
+  invoke("open_in_explorer", { path });
+
+/** Pauses/resumes the active live wallpaper; returns the new paused state. */
+export const toggleLivePause = (): Promise<boolean> =>
+  invoke("toggle_live_pause");
+
 /** One wallpaper path and its resolved cache thumbnail. */
 export interface ThumbnailEntry {
   path: string;

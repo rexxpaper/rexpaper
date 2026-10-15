@@ -1,8 +1,11 @@
 use std::path::PathBuf;
+#[cfg(not(debug_assertions))]
 use std::os::windows::ffi::OsStrExt;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+#[cfg(not(debug_assertions))]
 use windows::Win32::System::Registry::*;
+#[cfg(not(debug_assertions))]
 use windows::core::PCWSTR;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +98,14 @@ impl Settings {
         let _ = self.save();
     }
 
+    /// Writes (or removes) the autostart Run key. Release builds only —
+    /// dev builds share settings.json with the installed v1 app and must
+    /// never mutate machine state it does not own.
     fn update_startup_registry(enabled: bool) {
+        #[cfg(debug_assertions)]
+        let _ = enabled;
+
+        #[cfg(not(debug_assertions))]
         unsafe {
             let key_path: Vec<u16> = std::ffi::OsStr::new(r"Software\Microsoft\Windows\CurrentVersion\Run")
                 .encode_wide()
