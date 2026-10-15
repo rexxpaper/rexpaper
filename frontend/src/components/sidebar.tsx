@@ -17,6 +17,7 @@ export function Sidebar() {
           onClick={() => setRoute(item.id)}
           class={cn(
             "rounded-md px-3 py-2 text-left text-sm transition-colors",
+            item.id === "settings" && "mt-auto",
             route.value === item.id
               ? "bg-card font-medium text-text"
               : "text-secondary hover:bg-card hover:text-text",

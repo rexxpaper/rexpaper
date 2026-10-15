@@ -162,8 +162,8 @@ no neon, no glow, no decorative AI-generated visual filler.
 - **Packaging**: Tauri bundler with NSIS; mpv binaries/DLLs staged via Tauri's
   `resources`/`externalBin` config plus a post-build copy step equivalent to
   v1 `build.rs`.
-- **Window**: min 900×640, default ~1200×800, maximized on normal launch,
-  hidden on `--autostart`/`--minimized`.
+- **Window**: min 900×640, default ~1200×800 windowed and centered on normal
+  launch, hidden on `--autostart`/`--minimized`.
 - **i18n**: English only, matching v1.
 
 ## Testing Decisions
