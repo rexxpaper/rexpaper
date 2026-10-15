@@ -10,7 +10,6 @@ import {
 } from "../components/gallery";
 import { createGridKeyDown, matchesFilter } from "../lib/gallery";
 import {
-  applying,
   applyStaticWallpaper,
   chooseWallpaperDir,
   galleryError,
@@ -92,7 +91,7 @@ export function StaticPage() {
   }
 
   return (
-    <div class="flex h-full min-h-0 flex-col">
+    <div class="flex min-h-full flex-col">
       <GalleryToolbar
         count={filtered.length}
         total={items.length}
@@ -126,7 +125,6 @@ export function StaticPage() {
               key={item.path}
               path={item.path}
               isActive={currentSettings.active_static_wallpaper === item.path}
-              isApplying={applying.value === item.path}
               onClick={() => void applyStaticWallpaper(item.path)}
             />
           ))}

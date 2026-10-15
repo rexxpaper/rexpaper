@@ -50,8 +50,9 @@ exists only for transient overlays (menus, dialogs, popovers) that must read
 as floating above the layout.
 
 Gallery cards are visual-only: the thumbnail fills the frame edge to edge
-inside a 1px `{border}` edge — no filename captions under it. State badges
-(`Active`, progress) overlay the image.
+inside a 1px `{border}` edge — no filename captions under it, and no overlay
+badges. The active wallpaper is marked by a high-contrast `{text}` border on
+the card instead.
 
 Lists and property rows are divided by hairline bottom borders, never by
 alternating fills or gaps.

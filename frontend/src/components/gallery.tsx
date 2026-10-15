@@ -75,7 +75,7 @@ export function GalleryToolbar({
   const pending = thumbPendingCount.value;
 
   return (
-    <div class="shrink-0 border-b border-border bg-bg">
+    <div class="sticky top-0 z-30 shrink-0 border-b border-border bg-bg">
       <div class="flex items-center gap-3 px-6 py-3">
         <span class="text-xs text-muted tabular-nums">
           {count} of {total}
@@ -192,19 +192,17 @@ function GalleryThumb({ path }: { path: string }) {
 
 /**
  * Visual-only gallery tile: full-bleed thumbnail in a hairline frame with a
- * subtle hover lift. `media` renders above the thumbnail (hover video
- * preview); state badges overlay both.
+ * subtle hover lift. The active wallpaper is marked by a high-contrast
+ * border; `media` renders above the thumbnail (hover video preview).
  */
 export function GalleryCard({
   path,
   isActive,
-  isApplying,
   onClick,
   media,
 }: {
   path: string;
   isActive: boolean;
-  isApplying: boolean;
   onClick: () => void;
   media?: ComponentChildren;
 }) {
@@ -223,16 +221,6 @@ export function GalleryCard({
       <div class="relative aspect-video bg-panel">
         <GalleryThumb path={path} />
         {media}
-        {isActive && (
-          <span class="absolute right-1.5 bottom-1.5 rounded bg-bg/85 px-1.5 py-0.5 text-[10px] font-medium text-text">
-            Active
-          </span>
-        )}
-        {isApplying && (
-          <span class="absolute inset-x-0 bottom-0 bg-bg/85 px-2 py-1 text-center text-[10px] text-text">
-            Applying&hellip;
-          </span>
-        )}
       </div>
     </button>
   );

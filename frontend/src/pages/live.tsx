@@ -11,7 +11,6 @@ import {
 } from "../components/gallery";
 import { createGridKeyDown, matchesFilter } from "../lib/gallery";
 import {
-  applying,
   applyLiveWallpaper,
   chooseLiveWallpaperDir,
   galleryError,
@@ -136,7 +135,7 @@ export function LivePage() {
     currentSettings.active_live_wallpaper !== null;
 
   return (
-    <div class="flex h-full min-h-0 flex-col">
+    <div class="flex min-h-full flex-col">
       <GalleryToolbar
         count={filtered.length}
         total={items.length}
@@ -194,7 +193,6 @@ export function LivePage() {
                 key={item.path}
                 path={item.path}
                 isActive={isActive}
-                isApplying={applying.value === item.path}
                 onClick={() => void applyLiveWallpaper(item.path)}
                 media={
                   <div

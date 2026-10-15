@@ -71,7 +71,7 @@ export function App() {
       <div class="flex min-h-0 flex-1">
         <Sidebar />
         <main class="min-w-0 flex-1 overflow-y-auto bg-bg">
-          <div key={route.value} class="h-full animate-in fade-in-0 duration-150">
+          <div key={route.value} class="min-h-full animate-in fade-in-0 duration-150">
             {route.value === "static" && <StaticPage />}
             {route.value === "live" && <LivePage />}
             {route.value === "settings" && <SettingsPage />}
