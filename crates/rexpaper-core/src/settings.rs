@@ -129,7 +129,7 @@ impl Settings {
                 
                 if enabled {
                     if let Ok(exe_path) = std::env::current_exe() {
-                        let cmd_str = format!("\"{}\" --autostart", exe_path.display());
+                        let cmd_str = format!("\"{}\" --autostart --minimized", exe_path.display());
                         let value: Vec<u16> = cmd_str.encode_utf16().chain(Some(0)).collect();
                         let value_bytes: Vec<u8> = value.iter().flat_map(|c| c.to_le_bytes()).collect();
                         let _ = RegSetValueExW(

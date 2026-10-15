@@ -252,7 +252,13 @@ pub fn is_foreground_fullscreen() -> bool {
     }
 }
 
-pub fn start_fullscreen_monitor(settings: std::sync::Arc<std::sync::Mutex<crate::settings::Settings>>) {
+/// Polls the foreground window for fullscreen apps and pauses/resumes the
+/// live wallpaper around them. `on_pause_change` fires with the new paused
+/// state on every transition so the UI can follow along.
+pub fn start_fullscreen_monitor(
+    settings: std::sync::Arc<std::sync::Mutex<crate::settings::Settings>>,
+    on_pause_change: impl Fn(bool) + Send + 'static,
+) {
     std::thread::Builder::new()
         .name("rexpaper-fullscreen-monitor".to_string())
         .spawn(move || {
@@ -274,6 +280,7 @@ pub fn start_fullscreen_monitor(settings: std::sync::Arc<std::sync::Mutex<crate:
                     if is_live_wallpaper_active() && !IS_PAUSED_FOR_FULLSCREEN.load(Ordering::SeqCst) {
                         IS_PAUSED_FOR_FULLSCREEN.store(true, Ordering::SeqCst);
                         let _ = pause_for_fullscreen();
+                        on_pause_change(true);
                     }
                 } else {
                     if IS_PAUSED_FOR_FULLSCREEN.load(Ordering::SeqCst) {
@@ -281,6 +288,7 @@ pub fn start_fullscreen_monitor(settings: std::sync::Arc<std::sync::Mutex<crate:
                         let saved_path = CURRENT_LIVE_PATH.lock().unwrap().clone();
                         if let Some(path) = saved_path {
                             let _ = resume_after_fullscreen(&path);
+                            on_pause_change(false);
                         }
                     }
                 }
