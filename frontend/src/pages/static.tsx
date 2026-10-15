@@ -19,9 +19,6 @@ import {
   thumbStates,
 } from "../lib/store";
 
-const fileName = (path: string): string =>
-  path.split(/[\\/]/).pop() ?? path;
-
 const matchesFilter = (path: string, category: string, query: string): boolean => {
   const q = query.trim().toLowerCase();
   if (q === "") return true;
@@ -85,7 +82,6 @@ function SkeletonGrid() {
           class="overflow-hidden rounded-lg border border-border bg-card"
         >
           <div class="aspect-video bg-panel" />
-          <div class="h-7 border-t border-border" />
         </div>
       ))}
     </div>
@@ -301,7 +297,7 @@ export function StaticPage() {
                 title={item.path}
                 onClick={() => void applyStaticWallpaper(item.path)}
                 class={cn(
-                  "group relative flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  "group relative overflow-hidden rounded-lg border bg-card text-left transition duration-150 ease-out hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   isActive ? "border-text" : "border-border hover:border-secondary",
                 )}
               >
@@ -312,7 +308,15 @@ export function StaticPage() {
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      class="size-full object-cover"
+                      ref={(el) => {
+                        if (el != null && el.complete && el.naturalWidth > 0) {
+                          el.style.opacity = "1";
+                        }
+                      }}
+                      onLoad={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                      }}
+                      class="size-full object-cover opacity-0 transition-opacity duration-150 ease-out"
                     />
                   ) : state?.status === "failed" ? (
                     <div class="flex size-full items-center justify-center">
@@ -329,11 +333,6 @@ export function StaticPage() {
                       Applying&hellip;
                     </span>
                   )}
-                </div>
-                <div class="border-t border-border px-2.5 py-1.5">
-                  <span class="block truncate text-xs text-secondary">
-                    {fileName(item.path)}
-                  </span>
                 </div>
               </button>
             );
