@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="#overview">Overview</a> &bull;
+  <a href="#download">Download</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#supported-formats">Supported Formats</a> &bull;
   <a href="#tech-stack">Tech Stack</a> &bull;
@@ -36,7 +37,7 @@
 
 It manages thousands of ultra-high-resolution 4K/8K static wallpapers or renders seamless 60+ FPS live video wallpapers behind your desktop icons, with minimal resource usage and zero UI stutter.
 
-> **Status:** the Slint UI has been removed; the Tauri UI is being built up page by page. See `docs/specs/tauri-v2-migration.md`.
+> **Status:** the Slint app has been fully replaced by the Tauri v2 + Preact rewrite. Static and live galleries, settings, tray, autostart, and fullscreen auto-pause all ship, and tagged builds produce a standalone Windows installer. See [`docs/specs/tauri-v2-migration.md`](docs/specs/tauri-v2-migration.md).
 
 ---
 
@@ -44,27 +45,23 @@ It manages thousands of ultra-high-resolution 4K/8K static wallpapers or renders
 
 _Last updated 2026-10-15._
 
-**Working today** (verified with `npm run tauri dev`):
+RexPaper is feature-complete for its first Tauri release (`v1.0.6`), verified with `npm run tauri dev` and a full `npm run tauri build`:
 
-- Workspace builds clean: `cargo check --workspace` and `npm run build` are green; the app links against mpv and launches.
-- **App shell** — frameless window with a custom titlebar (File / View / Help menus, minimize / maximize / close buttons, drag-to-move, double-click to maximize) and a sidebar routing between Static, Live, and Settings pages.
-- **Settings page** — read-only settings summary and a "Scan libraries" button wired to real commands (settings load from the config file shared with v1; scans walk the configured folders).
-- **Backend command layer** — 9 typed Tauri commands: settings getters/setters (persisted), static/live scan, static wallpaper apply.
-- **Core extraction** — all v1 backend logic (scanner, thumbnails, Win32/WorkerW injection, mpv, tray, settings) lives UI-free in `crates/rexpaper-core`.
+- **App shell** — frameless window with a custom titlebar (minimize / maximize / close, drag-to-move, double-click to maximize) and a sidebar routing between the Static, Live, and Settings pages.
+- **Static gallery** — `rfd` folder picker, thumbnails delivered over the Tauri asset protocol (batch resolver plus background precompute with `thumbnail-progress` events), category filter, live search, and click-to-apply with an active highlight.
+- **Live gallery** — mpv frame thumbnails, hover previews streamed over range-request asset URLs, and apply / stop controls.
+- **Settings** — directory pickers and toggles for run-on-startup, pause-on-fullscreen, and mute-live-wallpapers, persisted to the config file shared with v1.
+- **Tray + window behaviour** — an 8-item tray menu, hidden start on `--autostart` / `--minimized`, wallpaper restore on launch, and a fullscreen auto-pause monitor driving the UI through `live-paused` events.
+- **Backend** — 17 typed Tauri commands over the UI-free `crates/rexpaper-core` (scanner, thumbnail cache, Win32/WorkerW injection, mpv, settings).
+- **Packaging** — a standalone, offline NSIS installer plus a tag-driven release workflow.
 
-**Verified end-to-end:** first launch, window opens maximized, IPC works, scans return counts.
+### Remaining
 
-## Pending Work
+- **Multi-monitor wallpaper assignment** — independent wallpaper per display.
+- **Live audio volume slider** — in-app control over live wallpaper volume.
+- **README screenshot** — capture the finished UI.
 
-In planned order, one commit per slice:
-
-1. **Static gallery** — `rfd` folder pickers, thumbnail delivery over the Tauri asset protocol (batch resolver + background precompute with progress events), card grid with lazy thumbnails, category filter, live search, click-to-apply with active highlight.
-2. **Live gallery** — video thumbnails, hover preview over range-request URLs, apply / stop controls.
-3. **Settings + tray + window behavior** — toggle UI, system tray menu (Open, Static, Live, Settings, Pause, Next, Open Folder, Quit), tray-driven routing, hidden start on `--autostart`/`--minimized`, restore active wallpaper on startup, fullscreen-pause thread.
-4. **README visual refresh** — screenshot of the new UI once the galleries exist.
-5. **Packaging + CI** — done: a standalone, offline NSIS installer (bundled `mpv.exe`, embedded WebView2 bootstrapper) plus a tag-driven release workflow. See [Getting Started](#getting-started).
-
-Known dev-workaround: the registry write for "run on startup" must stay guarded out of debug builds so dev runs cannot hijack the installed v1 autostart entry.
+Known dev-workaround: the registry write for "run on startup" stays guarded out of debug builds so dev runs cannot hijack the installed v1 autostart entry.
 
 ---
 
@@ -89,7 +86,7 @@ Known dev-workaround: the registry write for "run on startup" must stay guarded 
 - **Crash-Proof Fault Tolerance**: All decoding and thumbnail generation is wrapped in `std::panic::catch_unwind` with dark placeholder fallbacks for corrupt files.
 
 ### Deep Windows System Integration
-- **System Tray Integration**: Background system tray with context menu (Open, Static, Live, Settings, Quit).
+- **System Tray Integration**: Background tray with Open, page shortcuts, Pause / Resume Live Wallpaper, Next Wallpaper, Open Wallpaper Folder, and Quit.
 - **Per-Monitor V2 HiDPI Awareness**: Razor-sharp rendering at every display scaling factor.
 - **Silent Windows Autostart**: Registry integration (`HKCU\...\CurrentVersion\Run`) with `--autostart` / `--minimized` flags.
 
@@ -125,6 +122,16 @@ Known dev-workaround: the registry write for "run on startup" must stay guarded 
 
 ---
 
+## Download
+
+Grab the latest installer from the [Releases](https://github.com/rexxpaper/rexpaper/releases/latest) page:
+
+**`RexPaper_<version>_x64-setup.exe`** — Windows 10 / 11 (x64)
+
+The installer is fully self-contained: it bundles the mpv runtime and uses an embedded WebView2 bootstrapper, so no internet connection is required. It installs per-user (no admin prompt). Builds are currently **unsigned**, so Windows SmartScreen may warn on first run — choose *More info &rarr; Run anyway*.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
@@ -151,7 +158,7 @@ pwsh ./scripts/fetch-mpv.ps1
 # Development mode (Vite dev server + Tauri window)
 npm run tauri dev
 
-# Production build (NSIS installer + portable bundle)
+# Production build (standalone NSIS installer)
 npm run tauri build
 ```
 
@@ -183,25 +190,31 @@ git push origin v1.0.6
 ```
 rexpaper/
 ├── assets/
-│   ├── icon.ico             # Application icon (tray + Tauri)
+│   ├── icon.ico             # Application icon
 │   └── logo.png             # RexPaper brand logo
 ├── crates/
 │   └── rexpaper-core/       # UI-free Rust backend library
 │       ├── build.rs         # Stages mpv.exe next to the built binary
 │       └── src/
-│           ├── scanner.rs       # Recursive filesystem wallpaper scanner
-│           ├── thumbnail.rs     # Multi-core thumbnail precompute & disk cache
-│           ├── settings.rs      # JSON settings + autostart registry
-│           ├── static_wallpaper.rs  # Win32 wallpaper application
-│           └── platform/           # WorkerW injection + system tray
+│           ├── scanner.rs          # Recursive filesystem wallpaper scanner
+│           ├── thumbnail.rs        # Multi-core thumbnail precompute & disk cache
+│           ├── static_wallpaper.rs # Win32 wallpaper application
+│           ├── settings.rs         # JSON settings + autostart registry
+│           ├── models.rs           # Shared item & app-state types
+│           └── platform/           # WorkerW injection, live playback, fullscreen monitor
 ├── src-tauri/               # Tauri v2 app (commands, events, config)
-│   ├── src/main.rs          # Entry point, command registration
-│   ├── src/commands.rs      # Typed command layer over rexpaper-core
+│   ├── src/main.rs          # Entry point, tray, restore, command registration
+│   ├── src/commands.rs      # 17 typed commands over rexpaper-core
+│   ├── windows/hooks.nsh    # NSIS install/uninstall hooks
+│   ├── mpv/                 # mpv runtime binary (fetched, not committed)
 │   └── tauri.conf.json      # Window, dev server, NSIS bundle config
 ├── frontend/                # Preact + Vite + TypeScript + Tailwind
-│   └── src/                 # App, pages, typed API mirror
+│   └── src/
+│       ├── pages/           # Static, live, and settings pages
+│       ├── components/      # Titlebar, sidebar, gallery grid
+│       └── lib/             # Typed API mirror, signals store, gallery helpers
 ├── scripts/fetch-mpv.ps1    # Downloads the pinned mpv runtime
-├── src-tauri/mpv/           # mpv runtime binary (mpv.exe, fetched, not committed)
+├── .github/workflows/       # Tag-driven release CI
 ├── docs/specs/              # Design specs
 └── LICENSE                  # GNU General Public License v3.0
 ```
@@ -212,10 +225,10 @@ rexpaper/
 
 - [x] **Core extraction** &mdash; UI-free `rexpaper-core` workspace crate.
 - [x] **Tauri v2 + Preact scaffold** &mdash; typed commands, minimal settings/scan UI.
-- [x] **First launch + app shell** &mdash; frameless window, custom titlebar with menus and window controls, sidebar routing.
-- [ ] **Static gallery page** &mdash; grid, categories, search, lazy thumbnails, apply.
-- [ ] **Live gallery page** &mdash; video thumbnails and playback controls.
-- [ ] **Settings page** &mdash; directory pickers, toggles, tray + autostart wiring.
+- [x] **First launch + app shell** &mdash; frameless window, custom titlebar with window controls, sidebar routing.
+- [x] **Static gallery page** &mdash; grid, categories, search, lazy thumbnails, apply.
+- [x] **Live gallery page** &mdash; video thumbnails, hover previews, apply/stop controls.
+- [x] **Settings page** &mdash; directory pickers, toggles, tray + autostart wiring.
 - [x] **NSIS packaging + release CI** &mdash; standalone offline installer (bundled mpv) and a tag-driven GitHub Actions release workflow.
 - [ ] **Multi-Monitor Wallpaper Assignment** &mdash; Assign independent wallpapers per display monitor.
 - [ ] **Granular Live Audio Volume Slider** &mdash; In-app slider to adjust live wallpaper volume levels.
@@ -227,5 +240,5 @@ rexpaper/
 This project is licensed under the **GNU General Public License v3.0** &mdash; see the [LICENSE](LICENSE) file for details.
 
 <p align="center">
-  Made by <a href="https://github.com/theabsoluteray">theabsoluteray</a>
+  Made by <a href="https://github.com/rexxpaper">rexxpaper</a>
 </p>
