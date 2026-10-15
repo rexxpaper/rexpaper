@@ -3,13 +3,7 @@ import type { Signal } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "../lib/cn";
-import {
-  applying,
-  runScan,
-  scanning,
-  thumbPendingCount,
-  thumbStates,
-} from "../lib/store";
+import { applying, runScan, scanning, thumbStates } from "../lib/store";
 
 // --- Hooks ------------------------------------------------------------------
 
@@ -48,12 +42,10 @@ export function useEscapeClearsSearch(search: Signal<string>): void {
 // --- Toolbar ----------------------------------------------------------------
 
 /**
- * Shared gallery toolbar: counts, subfolder dropdown, generation/applying
- * status, optional extra controls (before the status), and search field.
+ * Shared gallery toolbar: subfolder dropdown, applying status, optional extra
+ * controls, and search field.
  */
 export function GalleryToolbar({
-  count,
-  total,
   search,
   categories,
   category,
@@ -61,8 +53,6 @@ export function GalleryToolbar({
   ariaLabel,
   children,
 }: {
-  count: number;
-  total: number;
   search: Signal<string>;
   categories: string[];
   category: Signal<string>;
@@ -72,14 +62,10 @@ export function GalleryToolbar({
 }) {
   const searchValue = search.value;
   const activeCategory = category.value;
-  const pending = thumbPendingCount.value;
 
   return (
     <div class="sticky top-0 z-30 shrink-0 border-b border-border bg-bg">
       <div class="flex items-center gap-3 px-6 py-3">
-        <span class="text-xs text-muted tabular-nums">
-          {count} of {total}
-        </span>
         {categories.length > 1 && (
           <div class="relative">
             <select
@@ -114,11 +100,6 @@ export function GalleryToolbar({
         )}
         <div class="flex-1" />
         {children}
-        {pending > 0 && (
-          <span class="text-xs text-muted tabular-nums">
-            Generating thumbnails &mdash; {pending} left
-          </span>
-        )}
         {applying.value !== null && (
           <span class="text-xs text-muted">Applying&hellip;</span>
         )}
@@ -211,7 +192,6 @@ export function GalleryCard({
       type="button"
       data-card
       aria-current={isActive ? "true" : undefined}
-      title={path}
       onClick={onClick}
       class={cn(
         "group relative overflow-hidden rounded-lg border bg-card text-left transition duration-150 ease-out hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",

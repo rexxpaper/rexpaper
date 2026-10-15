@@ -5,9 +5,7 @@ import {
   applyRandomWallpaper,
   chooseLiveWallpaperDir,
   chooseWallpaperDir,
-  livePaused,
   openFolder,
-  pausing,
   runScan,
   scanCounts,
   scanError,
@@ -15,7 +13,6 @@ import {
   settings,
   settingsError,
   showAbout,
-  toggleLiveWallpaperPause,
   toggleMuteLiveWallpapers,
   togglePauseOnFullscreen,
   toggleRunOnStartup,
@@ -124,7 +121,6 @@ export function SettingsPage() {
   const s = settings.value;
   const counts = scanCounts.value;
   const applyingNow = applying.value !== null;
-  const hasLive = s?.active_live_wallpaper != null;
 
   return (
     <div class="mx-auto w-full max-w-3xl space-y-6 p-6">
@@ -211,67 +207,8 @@ export function SettingsPage() {
 
           <section class="rounded-lg border border-border bg-card p-5">
             <h2 class="mb-1 text-sm font-medium text-secondary text-balance">
-              Status
+              Wallpaper
             </h2>
-            <SettingRow label="Mode">
-              <span class="text-sm text-muted">
-                {s.wallpaper_mode === "live"
-                  ? livePaused.value
-                    ? "Live \u2014 paused"
-                    : "Live"
-                  : s.wallpaper_mode === "static"
-                    ? "Static"
-                    : "\u2014"}
-              </span>
-            </SettingRow>
-            {s.active_static_wallpaper !== null && (
-              <SettingRow label="Active static">
-                <span
-                  class="max-w-56 truncate text-sm text-muted"
-                  title={s.active_static_wallpaper}
-                >
-                  {s.active_static_wallpaper}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void openFolder(s.active_static_wallpaper ?? "")}
-                  class={ghostButton}
-                >
-                  Open
-                </button>
-              </SettingRow>
-            )}
-            {hasLive && (
-              <SettingRow label="Active live">
-                <span
-                  class="max-w-56 truncate text-sm text-muted"
-                  title={s.active_live_wallpaper ?? undefined}
-                >
-                  {s.active_live_wallpaper}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void openFolder(s.active_live_wallpaper ?? "")
-                  }
-                  class={ghostButton}
-                >
-                  Open
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void toggleLiveWallpaperPause()}
-                  disabled={pausing.value}
-                  class={ghostButton}
-                >
-                  {pausing.value
-                    ? "\u2026"
-                    : livePaused.value
-                      ? "Resume"
-                      : "Pause"}
-                </button>
-              </SettingRow>
-            )}
             <SettingRow
               label="Next wallpaper"
               hint="Applies a random wallpaper from your library."

@@ -50,7 +50,6 @@ function AboutModal() {
           A fast, native wallpaper manager for Windows with hardware-accelerated
           live video wallpapers.
         </p>
-        <p class="mt-3 text-xs text-muted text-pretty">GPL-3.0 licensed.</p>
         <div class="mt-4 flex justify-end">
           <button
             type="button"
