@@ -241,10 +241,16 @@ fn do_apply_live(wallpaper: &Path, settings: &SettingsState) -> Result<Settings,
 /// and the Settings page). Scans once when the library has not been walked
 /// this session, and avoids re-picking the current wallpaper when possible.
 #[tauri::command(async)]
-pub fn next_wallpaper(
-    settings: State<'_, SettingsState>,
-    state: State<'_, SharedState>,
-) -> Result<Settings, String> {
+pub fn next_wallpaper(app: tauri::AppHandle) -> Result<Settings, String> {
+    next_wallpaper_impl(&app)
+}
+
+/// Tray-callable core of [`next_wallpaper`]; the caller decides threading
+/// and how the updated settings are surfaced.
+pub fn next_wallpaper_impl(app: &tauri::AppHandle) -> Result<Settings, String> {
+    let settings = app.state::<SettingsState>();
+    let state = app.state::<SharedState>();
+
     let dir = settings
         .lock()
         .map_err(|e| e.to_string())?
@@ -309,10 +315,13 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
 /// Pauses or resumes the active live wallpaper on demand. Returns the new
 /// paused state and emits `live-paused` so the UI can follow along.
 #[tauri::command(async)]
-pub fn toggle_live_pause(
-    app: tauri::AppHandle,
-    settings: State<'_, SettingsState>,
-) -> Result<bool, String> {
+pub fn toggle_live_pause(app: tauri::AppHandle) -> Result<bool, String> {
+    toggle_live_pause_impl(&app)
+}
+
+/// Tray-callable core of [`toggle_live_pause`].
+pub fn toggle_live_pause_impl(app: &tauri::AppHandle) -> Result<bool, String> {
+    let settings = app.state::<SettingsState>();
     let path = settings
         .lock()
         .map_err(|e| e.to_string())?

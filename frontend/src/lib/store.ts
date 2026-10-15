@@ -257,6 +257,27 @@ export async function initThumbnailListener(): Promise<void> {
   });
 }
 
+/** Fullscreen auto-pause and the tray toggle share the `live-paused` event. */
+export async function initLivePausedListener(): Promise<void> {
+  await listen<boolean>("live-paused", (event) => {
+    livePaused.value = event.payload;
+  });
+}
+
+/** Tray actions that change settings (Next Wallpaper) push the new snapshot. */
+export async function initSettingsListener(): Promise<void> {
+  await listen<Settings>("settings-changed", (event) => {
+    settings.value = event.payload;
+  });
+}
+
+/** Tray page actions ask the UI to navigate before the window is shown. */
+export async function initRouteListener(): Promise<void> {
+  await listen<Route>("route", (event) => {
+    route.value = event.payload;
+  });
+}
+
 /**
  * Queues thumbnail generation for items without state. Paths are marked
  * pending up front; `resolve_thumbnails` returns the cached ones and the
