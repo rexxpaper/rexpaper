@@ -56,9 +56,12 @@ inside a 1px `{border}` edge — no filename captions under it. State badges
 Lists and property rows are divided by hairline bottom borders, never by
 alternating fills or gaps.
 
-Controls (buttons, toggles, inputs) share one silhouette: a small uniform
-radius, a 1px `{border}` edge when unfilled, and a neutral fill on hover.
-Keyboard focus is a visible 2px outline in `{text}` with offset — contrast
+Controls (buttons, toggles, inputs, selects) share one silhouette: a small
+uniform radius, a 1px `{border}` edge when unfilled, and a neutral fill on
+hover. Selects stay native elements with the system arrow hidden
+(`appearance-none`) and a hairline chevron drawn in — native keyboard
+behavior, and the OS popup scrolls long option lists for free. Keyboard
+focus is a visible 2px outline in `{text}` with offset — contrast
 again, not color.
 
 Interaction feedback is short and uniform: 150ms ease-out transitions on

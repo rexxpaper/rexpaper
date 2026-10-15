@@ -48,8 +48,8 @@ export function useEscapeClearsSearch(search: Signal<string>): void {
 // --- Toolbar ----------------------------------------------------------------
 
 /**
- * Shared gallery toolbar: counts, generation/applying status, optional
- * extra controls (before the status), search field, and category chips.
+ * Shared gallery toolbar: counts, subfolder dropdown, generation/applying
+ * status, optional extra controls (before the status), and search field.
  */
 export function GalleryToolbar({
   count,
@@ -80,6 +80,38 @@ export function GalleryToolbar({
         <span class="text-xs text-muted tabular-nums">
           {count} of {total}
         </span>
+        {categories.length > 1 && (
+          <div class="relative">
+            <select
+              aria-label="Subfolder"
+              value={activeCategory}
+              onChange={(e) => {
+                category.value = (e.currentTarget as HTMLSelectElement).value;
+              }}
+              class="h-8 appearance-none rounded-md border border-border bg-card py-1 pl-2.5 pr-7 text-sm text-text transition-colors duration-150 ease-out hover:border-secondary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            >
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat === "All" ? "All subfolders" : cat}
+                </option>
+              ))}
+            </select>
+            <svg
+              class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted"
+              width="9"
+              height="5"
+              viewBox="0 0 9 5"
+              aria-hidden="true"
+            >
+              <path
+                d="M0.5 0.5l4 4 4-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1"
+              />
+            </svg>
+          </div>
+        )}
         <div class="flex-1" />
         {children}
         {pending > 0 && (
@@ -121,28 +153,6 @@ export function GalleryToolbar({
           )}
         </div>
       </div>
-      {categories.length > 1 && (
-        <div class="flex gap-1.5 overflow-x-auto px-6 pb-3">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              aria-pressed={activeCategory === cat}
-              onClick={() => {
-                category.value = cat;
-              }}
-              class={cn(
-                "shrink-0 rounded-md border border-border px-2.5 py-1 text-xs transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                activeCategory === cat
-                  ? "bg-card font-medium text-text"
-                  : "text-secondary hover:bg-card hover:text-text",
-              )}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
