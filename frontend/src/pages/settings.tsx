@@ -23,9 +23,11 @@ export function SettingsPage() {
   return (
     <div class="mx-auto w-full max-w-3xl space-y-6 p-6">
       <section class="rounded-lg border border-border bg-card p-5">
-        <h2 class="mb-4 text-sm font-medium text-secondary">Settings</h2>
+        <h2 class="mb-4 text-sm font-medium text-secondary text-balance">Settings</h2>
         {settingsError.value !== null && (
-          <p class="text-sm text-red-400">{settingsError.value}</p>
+          <p class="rounded-md border border-border bg-card px-3 py-2 text-sm text-text">
+            {settingsError.value}
+          </p>
         )}
         {settingsError.value === null && s === null && (
           <p class="text-sm text-muted">Loading&hellip;</p>
@@ -57,24 +59,26 @@ export function SettingsPage() {
       </section>
 
       <section class="rounded-lg border border-border bg-card p-5">
-        <h2 class="mb-4 text-sm font-medium text-secondary">Libraries</h2>
+        <h2 class="mb-4 text-sm font-medium text-secondary text-balance">Libraries</h2>
         <div class="flex items-center gap-4">
           <button
             type="button"
             onClick={() => void runScan()}
             disabled={scanning.value}
-            class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+            class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
           >
             {scanning.value ? "Scanning\u2026" : "Scan libraries"}
           </button>
           {counts !== null && (
-            <span class="text-sm text-muted">
+            <span class="text-sm text-muted tabular-nums">
               {counts.staticCount} static &middot; {counts.liveCount} live
             </span>
           )}
         </div>
         {scanError.value !== null && (
-          <p class="mt-3 text-sm text-red-400">{scanError.value}</p>
+          <p class="mt-3 rounded-md border border-border bg-card px-3 py-2 text-sm text-text">
+            {scanError.value}
+          </p>
         )}
       </section>
     </div>

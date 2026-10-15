@@ -4,16 +4,16 @@
 @source "../index.html";
 @source "../src";
 
-/* Flat v1 design tokens (dark theme) — no gradients. */
+/* Flat mono design tokens (dark theme) — grayscale only, see DESIGN.md. */
 @theme {
-  --color-bg: #0d0f17;
-  --color-panel: #121520;
-  --color-card: #181c28;
-  --color-border: #262c3e;
-  --color-text: #ffffff;
-  --color-secondary: #a0a6b8;
-  --color-muted: #6d758a;
-  --color-accent: #6366f1;
+  --color-bg: #0a0a0a;
+  --color-panel: #111111;
+  --color-card: #171717;
+  --color-border: #262626;
+  --color-text: #fafafa;
+  --color-primary: #fafafa;
+  --color-secondary: #a3a3a3;
+  --color-muted: #737373;
 }
 
 html,

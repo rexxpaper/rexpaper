@@ -1,4 +1,5 @@
 import { route, setRoute, type Route } from "../lib/store";
+import { cn } from "../lib/cn";
 
 const items: { id: Route; label: string }[] = [
   { id: "static", label: "Static Wallpapers" },
@@ -14,11 +15,12 @@ export function Sidebar() {
           key={item.id}
           type="button"
           onClick={() => setRoute(item.id)}
-          class={`rounded-md px-3 py-2 text-left text-sm transition-colors ${
+          class={cn(
+            "rounded-md px-3 py-2 text-left text-sm transition-colors",
             route.value === item.id
               ? "bg-card font-medium text-text"
-              : "text-secondary hover:bg-card hover:text-text"
-          }`}
+              : "text-secondary hover:bg-card hover:text-text",
+          )}
         >
           {item.label}
         </button>

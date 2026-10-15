@@ -34,15 +34,15 @@ function AboutModal() {
         class="w-80 rounded-lg border border-border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 class="text-sm font-semibold">RexPaper</h2>
-        <p class="mt-1 text-sm text-secondary">
+        <h2 class="text-sm font-semibold text-balance">RexPaper</h2>
+        <p class="mt-1 text-sm text-secondary text-pretty">
           {version !== "" ? `Version ${version}` : "Wallpaper manager for Windows"}
         </p>
-        <p class="mt-3 text-sm text-muted">
+        <p class="mt-3 text-sm text-muted text-pretty">
           A fast, native wallpaper manager for Windows with hardware-accelerated
           live video wallpapers.
         </p>
-        <p class="mt-3 text-xs text-muted">GPL-3.0 licensed.</p>
+        <p class="mt-3 text-xs text-muted text-pretty">GPL-3.0 licensed.</p>
         <div class="mt-4 flex justify-end">
           <button
             type="button"
@@ -65,7 +65,7 @@ export function App() {
   }, []);
 
   return (
-    <div class="flex h-screen flex-col overflow-hidden bg-bg text-text">
+    <div class="flex h-dvh flex-col overflow-hidden bg-bg text-text">
       <Titlebar />
       <div class="flex min-h-0 flex-1">
         <Sidebar />

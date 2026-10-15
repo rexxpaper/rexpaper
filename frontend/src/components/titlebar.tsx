@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { route, setRoute, showAbout, type Route } from "../lib/store";
+import { cn } from "../lib/cn";
 
 const win = () => getCurrentWindow();
 
@@ -44,7 +45,7 @@ function MenuPanel({ entries }: { entries: MenuEntry[] }) {
             }}
             class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text transition-colors hover:bg-card"
           >
-            <span class="w-3 text-center text-xs text-accent">
+            <span class="w-3 text-center text-xs text-text">
               {entry.checked ? "\u2713" : ""}
             </span>
             {entry.label}
@@ -107,9 +108,10 @@ function Titlebar() {
       onMouseEnter={() => {
         if (openMenu !== null && openMenu !== name) setOpenMenu(name);
       }}
-      class={`relative h-full px-3 text-sm transition-colors ${
-        openMenu === name ? "bg-card text-text" : "text-secondary hover:text-text"
-      }`}
+      class={cn(
+        "relative h-full px-3 text-sm transition-colors",
+        openMenu === name ? "bg-card text-text" : "text-secondary hover:text-text",
+      )}
     >
       {label}
       {openMenu === name && <MenuPanel entries={entries} />}
@@ -200,7 +202,7 @@ function Titlebar() {
           type="button"
           aria-label="Close"
           onClick={() => void win().close()}
-          class="flex w-11 items-center justify-center text-secondary transition-colors hover:bg-[#e81123] hover:text-white"
+          class="flex w-11 items-center justify-center text-secondary transition-colors hover:bg-[#e81123] hover:text-text"
         >
           <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
             <path
