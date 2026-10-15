@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 rexpaper-core = { path = "../crates/rexpaper-core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 # Store wiring lands in Phase 3; dependency pinned now so Cargo.lock settles.
 tauri-plugin-store = "2"
 rfd = "0.15"

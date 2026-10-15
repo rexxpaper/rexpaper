@@ -5,7 +5,7 @@ import { Sidebar } from "./components/sidebar";
 import { StaticPage } from "./pages/static";
 import { LivePage } from "./pages/live";
 import { SettingsPage } from "./pages/settings";
-import { loadSettings, route, showAbout } from "./lib/store";
+import { loadSettings, initThumbnailListener, route, showAbout } from "./lib/store";
 
 function AboutModal() {
   const [version, setVersion] = useState<string>("");
@@ -62,6 +62,7 @@ function AboutModal() {
 export function App() {
   useEffect(() => {
     void loadSettings();
+    void initThumbnailListener();
   }, []);
 
   return (
