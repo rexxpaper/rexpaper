@@ -57,6 +57,11 @@ the card instead.
 Lists and property rows are divided by hairline bottom borders, never by
 alternating fills or gaps.
 
+Sidebar navigation pairs a 16px hairline glyph with its label. Glyphs are
+stroked in `currentColor` with round caps and no fills, so they inherit the
+item's `{secondary}` resting color and its `{text}` active/hover color
+alongside the text.
+
 Controls (buttons, toggles, inputs, selects) share one silhouette: a small
 uniform radius, a 1px `{border}` edge when unfilled, and a neutral fill on
 hover. Selects stay native elements with the system arrow hidden
