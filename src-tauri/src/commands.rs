@@ -100,6 +100,30 @@ pub async fn pick_wallpaper_dir(
     Ok(Some(s.clone()))
 }
 
+/// Same contract as [`pick_wallpaper_dir`] for the live video library.
+#[tauri::command(async)]
+pub async fn pick_live_wallpaper_dir(
+    app: tauri::AppHandle,
+    settings: State<'_, SettingsState>,
+) -> Result<Option<Settings>, String> {
+    let Some(handle) = rfd::AsyncFileDialog::new()
+        .set_title("Choose video folder")
+        .pick_folder()
+        .await
+    else {
+        return Ok(None);
+    };
+
+    let path = handle.path().to_path_buf();
+    app.asset_protocol_scope()
+        .allow_directory(&path, true)
+        .map_err(|e| e.to_string())?;
+
+    let mut s = settings.lock().map_err(|e| e.to_string())?;
+    s.set_live_wallpaper_dir(path);
+    Ok(Some(s.clone()))
+}
+
 /// Scans `settings.wallpaper_dir` and returns the flat item list; returns an
 /// empty list when no directory has been configured yet. Heavy: directory
 /// walk, so it runs off the main thread. The directory is granted to the
@@ -133,9 +157,11 @@ pub fn scan_static(
     Ok(items)
 }
 
-/// Same contract as [`scan_static`] for `settings.live_wallpaper_dir`.
+/// Same contract as [`scan_static`] for `settings.live_wallpaper_dir`. Also
+/// grants the directory so hover previews stream over the asset protocol.
 #[tauri::command(async)]
 pub fn scan_live(
+    app: tauri::AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, SharedState>,
 ) -> Result<Vec<LiveWallpaperItem>, String> {
@@ -147,6 +173,10 @@ pub fn scan_live(
     let Some(dir) = dir else {
         return Ok(Vec::new());
     };
+
+    app.asset_protocol_scope()
+        .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
 
     rexpaper_core::scanner::scan_live(&dir, state.inner().clone()).map_err(|e| e.to_string())?;
 
@@ -174,6 +204,41 @@ pub fn apply_static(
     s.active_live_wallpaper = None;
     s.active_static_wallpaper = Some(wallpaper);
     s.wallpaper_mode = "static".to_string();
+    s.save().map_err(|e| e.to_string())?;
+    Ok(s.clone())
+}
+
+/// Applies `path` as the live desktop wallpaper (mpv behind the desktop
+/// icons) and records it in settings. Blocking (host window resolution +
+/// mpv spawn), so it runs off the main thread. `active_static_wallpaper` is
+/// deliberately kept: the Windows static background stays underneath, and
+/// [`stop_live`] returns to it.
+#[tauri::command(async)]
+pub fn apply_live(path: String, settings: State<'_, SettingsState>) -> Result<Settings, String> {
+    let wallpaper = PathBuf::from(path);
+    // The core spawns mpv muted/unmuted per `mute_live_wallpapers` read from
+    // disk; that setting is saved on toggle, so nothing to flush here.
+    rexpaper_core::platform::windows::apply_live_wallpaper(&wallpaper)
+        .map_err(|e| e.to_string())?;
+
+    let mut s = settings.lock().map_err(|e| e.to_string())?;
+    s.active_live_wallpaper = Some(wallpaper);
+    s.wallpaper_mode = "live".to_string();
+    s.save().map_err(|e| e.to_string())?;
+    Ok(s.clone())
+}
+
+/// Stops the live desktop wallpaper; the static Windows background beneath
+/// it is revealed (or `active_static_wallpaper` if one was applied before).
+#[tauri::command(async)]
+pub fn stop_live(settings: State<'_, SettingsState>) -> Result<Settings, String> {
+    rexpaper_core::platform::windows::stop_live_wallpaper().map_err(|e| e.to_string())?;
+
+    let mut s = settings.lock().map_err(|e| e.to_string())?;
+    s.active_live_wallpaper = None;
+    if s.wallpaper_mode == "live" {
+        s.wallpaper_mode = "static".to_string();
+    }
     s.save().map_err(|e| e.to_string())?;
     Ok(s.clone())
 }

@@ -42,9 +42,12 @@ fn main() {
             commands::set_pause_on_fullscreen,
             commands::set_mute_live_wallpapers,
             commands::pick_wallpaper_dir,
+            commands::pick_live_wallpaper_dir,
             commands::scan_static,
             commands::scan_live,
             commands::apply_static,
+            commands::apply_live,
+            commands::stop_live,
             commands::resolve_thumbnails,
         ])
         .run(tauri::generate_context!())
