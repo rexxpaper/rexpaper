@@ -1,10 +1,10 @@
 [package]
 name = "rexpaper"
-version = "1.0.3"
+version = "1.0.6"
 edition = "2024"
 description = "A fast, native wallpaper manager for Windows with mpv live wallpapers"
 license = "GPL-3.0"
-repository = "https://github.com/theabsoluteray/rexpaper"
+repository = "https://github.com/rexxpaper/rexpaper"
 publish = false
 
 [dependencies]
