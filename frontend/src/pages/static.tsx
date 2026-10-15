@@ -93,8 +93,6 @@ export function StaticPage() {
   return (
     <div class="flex min-h-full flex-col">
       <GalleryToolbar
-        count={filtered.length}
-        total={items.length}
         search={staticSearch}
         categories={categories}
         category={staticCategory}

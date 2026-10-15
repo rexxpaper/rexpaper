@@ -137,8 +137,6 @@ export function LivePage() {
   return (
     <div class="flex min-h-full flex-col">
       <GalleryToolbar
-        count={filtered.length}
-        total={items.length}
         search={liveSearch}
         categories={categories}
         category={liveCategory}
