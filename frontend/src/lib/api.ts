@@ -57,6 +57,15 @@ export const applyStatic = (path: string): Promise<Settings> =>
 export const pickWallpaperDir = (): Promise<Settings | null> =>
   invoke("pick_wallpaper_dir");
 
+/** Native folder picker for the live video library; `null` when cancelled. */
+export const pickLiveWallpaperDir = (): Promise<Settings | null> =>
+  invoke("pick_live_wallpaper_dir");
+
+export const applyLive = (path: string): Promise<Settings> =>
+  invoke("apply_live", { path });
+
+export const stopLive = (): Promise<Settings> => invoke("stop_live");
+
 /** One wallpaper path and its resolved cache thumbnail. */
 export interface ThumbnailEntry {
   path: string;

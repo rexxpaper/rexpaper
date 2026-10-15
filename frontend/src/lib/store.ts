@@ -1,15 +1,19 @@
 import { computed, signal } from "@preact/signals";
 import { listen } from "@tauri-apps/api/event";
 import {
+  applyLive,
   applyStatic,
   getSettings,
+  pickLiveWallpaperDir,
   pickWallpaperDir,
   resolveThumbnails,
   scanLive,
   scanStatic,
+  stopLive,
   type LiveWallpaperItem,
   type Settings,
   type ThumbnailBatch,
+  type ThumbnailKind,
   type WallpaperItem,
 } from "./api";
 
@@ -45,7 +49,10 @@ export const staticCategories = signal<string[]>(["All"]);
 export const liveCategories = signal<string[]>(["All"]);
 export const staticCategory = signal("All");
 export const staticSearch = signal("");
+export const liveCategory = signal("All");
+export const liveSearch = signal("");
 export const applying = signal<string | null>(null);
+export const stopping = signal(false);
 export const galleryError = signal<string | null>(null);
 
 export const thumbStates = signal<Record<string, ThumbState>>({});
@@ -107,6 +114,20 @@ export async function chooseWallpaperDir(): Promise<void> {
   }
 }
 
+/** Same as [`chooseWallpaperDir`] for the live video library. */
+export async function chooseLiveWallpaperDir(): Promise<void> {
+  galleryError.value = null;
+  try {
+    const updated = await pickLiveWallpaperDir();
+    if (updated === null) return;
+    settings.value = updated;
+    liveItems.value = [];
+    liveCategory.value = "All";
+  } catch (err) {
+    galleryError.value = errorMessage(err);
+  }
+}
+
 export async function applyStaticWallpaper(path: string): Promise<void> {
   if (applying.value !== null) return;
   applying.value = path;
@@ -117,6 +138,33 @@ export async function applyStaticWallpaper(path: string): Promise<void> {
     galleryError.value = errorMessage(err);
   } finally {
     applying.value = null;
+  }
+}
+
+export async function applyLiveWallpaper(path: string): Promise<void> {
+  if (applying.value !== null || stopping.value) return;
+  applying.value = path;
+  galleryError.value = null;
+  try {
+    settings.value = await applyLive(path);
+  } catch (err) {
+    galleryError.value = errorMessage(err);
+  } finally {
+    applying.value = null;
+  }
+}
+
+/** Stops the live wallpaper; the static background beneath is revealed. */
+export async function stopLiveWallpaper(): Promise<void> {
+  if (stopping.value) return;
+  stopping.value = true;
+  galleryError.value = null;
+  try {
+    settings.value = await stopLive();
+  } catch (err) {
+    galleryError.value = errorMessage(err);
+  } finally {
+    stopping.value = false;
   }
 }
 
@@ -138,8 +186,9 @@ export async function initThumbnailListener(): Promise<void> {
  * worker drains the rest through progress events. Existing states are never
  * downgraded, so a late response cannot mask an already-arrived event.
  */
-export async function resolveStaticThumbnails(
-  items: WallpaperItem[],
+export async function queueThumbnails(
+  items: { path: string }[],
+  kind: ThumbnailKind,
 ): Promise<void> {
   const paths = items
     .filter((i) => thumbStates.value[i.path] === undefined)
@@ -151,7 +200,7 @@ export async function resolveStaticThumbnails(
   thumbStates.value = marked;
 
   try {
-    const result = await resolveThumbnails(paths, "static");
+    const result = await resolveThumbnails(paths, kind);
     const next = { ...thumbStates.value };
     for (const entry of result.ready) {
       if (entry.thumb !== null) {
