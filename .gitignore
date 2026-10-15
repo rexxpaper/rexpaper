@@ -28,12 +28,9 @@ DEV_*.md
 # Tauri-generated ACL schemas (regenerated on every build)
 /src-tauri/gen/schemas/
 
-# Local mpv runtime (mpv.exe) — downloaded, not committed
-/mpv/
-/mpv.7z
-/mpv-dev.7z
-/mpv-dev/
-/mpv-staging/
+# Local mpv runtime (mpv.exe) — fetched by scripts/fetch-mpv.ps1, not committed
+/src-tauri/mpv/
+/src-tauri/mpv.7z
 
 # Frontend (Preact + Vite)
 /node_modules/
