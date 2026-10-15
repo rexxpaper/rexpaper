@@ -196,16 +196,7 @@ pub fn apply_static(
     path: String,
     settings: State<'_, SettingsState>,
 ) -> Result<Settings, String> {
-    let wallpaper = PathBuf::from(path);
-    rexpaper_core::static_wallpaper::apply_static_wallpaper(&wallpaper)
-        .map_err(|e| e.to_string())?;
-
-    let mut s = settings.lock().map_err(|e| e.to_string())?;
-    s.active_live_wallpaper = None;
-    s.active_static_wallpaper = Some(wallpaper);
-    s.wallpaper_mode = "static".to_string();
-    s.save().map_err(|e| e.to_string())?;
-    Ok(s.clone())
+    do_apply_static(&PathBuf::from(path), settings.inner())
 }
 
 /// Applies `path` as the live desktop wallpaper (mpv behind the desktop
@@ -215,17 +206,133 @@ pub fn apply_static(
 /// [`stop_live`] returns to it.
 #[tauri::command(async)]
 pub fn apply_live(path: String, settings: State<'_, SettingsState>) -> Result<Settings, String> {
-    let wallpaper = PathBuf::from(path);
-    // The core spawns mpv muted/unmuted per `mute_live_wallpapers` read from
-    // disk; that setting is saved on toggle, so nothing to flush here.
-    rexpaper_core::platform::windows::apply_live_wallpaper(&wallpaper)
+    do_apply_live(&PathBuf::from(path), settings.inner())
+}
+
+/// Shared apply path for the `apply_static` and `next_wallpaper` commands:
+/// performs the platform work first, then records the result in settings.
+fn do_apply_static(wallpaper: &Path, settings: &SettingsState) -> Result<Settings, String> {
+    rexpaper_core::static_wallpaper::apply_static_wallpaper(wallpaper)
         .map_err(|e| e.to_string())?;
 
     let mut s = settings.lock().map_err(|e| e.to_string())?;
-    s.active_live_wallpaper = Some(wallpaper);
+    s.active_live_wallpaper = None;
+    s.active_static_wallpaper = Some(wallpaper.to_path_buf());
+    s.wallpaper_mode = "static".to_string();
+    s.save().map_err(|e| e.to_string())?;
+    Ok(s.clone())
+}
+
+/// Shared apply path for the `apply_live` command; see [`do_apply_static`].
+fn do_apply_live(wallpaper: &Path, settings: &SettingsState) -> Result<Settings, String> {
+    // The core spawns mpv muted/unmuted per `mute_live_wallpapers` read from
+    // disk; that setting is saved on toggle, so nothing to flush here.
+    rexpaper_core::platform::windows::apply_live_wallpaper(wallpaper)
+        .map_err(|e| e.to_string())?;
+
+    let mut s = settings.lock().map_err(|e| e.to_string())?;
+    s.active_live_wallpaper = Some(wallpaper.to_path_buf());
     s.wallpaper_mode = "live".to_string();
     s.save().map_err(|e| e.to_string())?;
     Ok(s.clone())
+}
+
+/// Applies a random wallpaper from the static library (tray "Next Wallpaper"
+/// and the Settings page). Scans once when the library has not been walked
+/// this session, and avoids re-picking the current wallpaper when possible.
+#[tauri::command(async)]
+pub fn next_wallpaper(
+    settings: State<'_, SettingsState>,
+    state: State<'_, SharedState>,
+) -> Result<Settings, String> {
+    let dir = settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .wallpaper_dir
+        .clone();
+    let Some(dir) = dir else {
+        return Err("No wallpaper folder is configured yet.".to_string());
+    };
+
+    let items = {
+        let scanned = state.lock().map_err(|e| e.to_string())?.static_wallpapers.clone();
+        if scanned.is_empty() {
+            rexpaper_core::scanner::scan_static(&dir, state.inner().clone())
+                .map_err(|e| e.to_string())?;
+            state.lock().map_err(|e| e.to_string())?.static_wallpapers.clone()
+        } else {
+            scanned
+        }
+    };
+    if items.is_empty() {
+        return Err("No wallpapers found to pick from.".to_string());
+    }
+
+    let current = settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .active_static_wallpaper
+        .clone();
+    let mut candidates: Vec<&rexpaper_core::WallpaperItem> = items
+        .iter()
+        .filter(|item| Some(&item.path) != current.as_ref())
+        .collect();
+    if candidates.is_empty() {
+        candidates = items.iter().collect();
+    }
+
+    let pick = candidates[rand::random_range(0..candidates.len())]
+        .path
+        .clone();
+    do_apply_static(&pick, settings.inner())
+}
+
+/// Reveals `path` in Windows Explorer with the file pre-selected (folder
+/// paths open the folder itself). Spawns `explorer` detached — it exits
+/// with code 1 even on success, so the process is not waited on.
+#[tauri::command]
+pub fn open_in_explorer(path: String) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let target = PathBuf::from(path);
+    let mut cmd = std::process::Command::new("explorer");
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    if target.is_dir() {
+        cmd.arg(&target);
+    } else {
+        cmd.args(["/select,", &target.to_string_lossy()]);
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Pauses or resumes the active live wallpaper on demand. Returns the new
+/// paused state and emits `live-paused` so the UI can follow along.
+#[tauri::command(async)]
+pub fn toggle_live_pause(
+    app: tauri::AppHandle,
+    settings: State<'_, SettingsState>,
+) -> Result<bool, String> {
+    let path = settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .active_live_wallpaper
+        .clone();
+    let Some(path) = path else {
+        return Ok(false);
+    };
+
+    let paused = if rexpaper_core::platform::windows::is_live_wallpaper_active() {
+        rexpaper_core::platform::windows::pause_for_fullscreen().map_err(|e| e.to_string())?;
+        true
+    } else {
+        rexpaper_core::platform::windows::resume_after_fullscreen(&path)
+            .map_err(|e| e.to_string())?;
+        false
+    };
+
+    let _ = app.emit("live-paused", paused);
+    Ok(paused)
 }
 
 /// Stops the live desktop wallpaper; the static Windows background beneath

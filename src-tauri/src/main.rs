@@ -48,6 +48,9 @@ fn main() {
             commands::apply_static,
             commands::apply_live,
             commands::stop_live,
+            commands::next_wallpaper,
+            commands::open_in_explorer,
+            commands::toggle_live_pause,
             commands::resolve_thumbnails,
         ])
         .run(tauri::generate_context!())
