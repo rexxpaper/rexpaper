@@ -27,7 +27,7 @@ hue. Surfaces are flat and regions are separated by hairline borders.
 ## Colors
 
 The ramp is grayscale only. `{bg}` anchors the window; `{panel}` carries chrome
-(titlebar, sidebar, menus); `{card}` lifts contained content (cards, rows,
+(titlebar, sidebar); `{card}` lifts contained content (cards, rows,
 hover fills); `{border}` draws every separator at 1px. Text descends
 `{text}` → `{secondary}` → `{muted}` by importance.
 
@@ -65,6 +65,12 @@ behavior, and the OS popup scrolls long option lists for free. Keyboard
 focus is a visible 2px outline in `{text}` with offset — contrast
 again, not color.
 
+Window controls (minimize, maximize/restore, close) are caption chips: small
+inset rounded rectangles in the titlebar rather than full-height cells, with a
+`{secondary}` glyph that turns `{text}` over a neutral `{card}` hover fill. The
+close control carries the single sanctioned non-grayscale exception: its hover
+fill is red (`#e81123`), with the same chip silhouette.
+
 Interaction feedback is short and uniform: 150ms ease-out transitions on
 `transform`, `opacity`, and small local color changes (text, border, hover
 fills) — never on layout properties or large blur surfaces.
@@ -77,4 +83,5 @@ to get started.
 - Do separate regions with flat fills and 1px hairline borders.
 - Don't use gradients, neon, glow, or decorative filler.
 - Don't introduce saturated color anywhere, including status and highlight
-  states; communicate state with contrast, weight, and border.
+  states; communicate state with contrast, weight, and border. (The close
+  control's red hover is the sole sanctioned exception.)

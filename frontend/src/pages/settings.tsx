@@ -14,6 +14,7 @@ import {
   scanning,
   settings,
   settingsError,
+  showAbout,
   toggleLiveWallpaperPause,
   toggleMuteLiveWallpapers,
   togglePauseOnFullscreen,
@@ -282,6 +283,26 @@ export function SettingsPage() {
                 class={ghostButton}
               >
                 {applyingNow ? "Applying\u2026" : "Apply random"}
+              </button>
+            </SettingRow>
+          </section>
+
+          <section class="rounded-lg border border-border bg-card p-5">
+            <h2 class="mb-1 text-sm font-medium text-secondary text-balance">
+              About
+            </h2>
+            <SettingRow
+              label="RexPaper"
+              hint="A fast, native wallpaper manager for Windows."
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  showAbout.value = true;
+                }}
+                class={ghostButton}
+              >
+                About
               </button>
             </SettingRow>
           </section>
