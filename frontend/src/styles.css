@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* Explicit sources: frontend files only, regardless of vite's cwd. */
 @source "../index.html";
@@ -28,4 +29,36 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Thin scrollbars in the mono ramp. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+  background-clip: content-box;
+}
+
+::selection {
+  background: var(--color-muted);
+  color: var(--color-text);
 }

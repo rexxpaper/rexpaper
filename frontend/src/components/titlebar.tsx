@@ -109,8 +109,10 @@ function Titlebar() {
         if (openMenu !== null && openMenu !== name) setOpenMenu(name);
       }}
       class={cn(
-        "relative h-full px-3 text-sm transition-colors",
-        openMenu === name ? "bg-card text-text" : "text-secondary hover:text-text",
+        "relative h-full px-3 text-sm transition-colors duration-150 ease-out",
+        openMenu === name
+          ? "bg-card text-text"
+          : "text-secondary hover:bg-card hover:text-text",
       )}
     >
       {label}

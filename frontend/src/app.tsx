@@ -23,7 +23,7 @@ function AboutModal() {
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in-0 duration-150"
       onClick={() => {
         showAbout.value = false;
       }}
@@ -31,7 +31,7 @@ function AboutModal() {
       <div
         role="dialog"
         aria-label="About RexPaper"
-        class="w-80 rounded-lg border border-border bg-card p-5 shadow-lg"
+        class="w-80 rounded-lg border border-border bg-card p-5 shadow-lg animate-in fade-in-0 zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 class="text-sm font-semibold text-balance">RexPaper</h2>
@@ -71,9 +71,11 @@ export function App() {
       <div class="flex min-h-0 flex-1">
         <Sidebar />
         <main class="min-w-0 flex-1 overflow-y-auto bg-bg">
-          {route.value === "static" && <StaticPage />}
-          {route.value === "live" && <LivePage />}
-          {route.value === "settings" && <SettingsPage />}
+          <div key={route.value} class="h-full animate-in fade-in-0 duration-150">
+            {route.value === "static" && <StaticPage />}
+            {route.value === "live" && <LivePage />}
+            {route.value === "settings" && <SettingsPage />}
+          </div>
         </main>
       </div>
       {showAbout.value && <AboutModal />}

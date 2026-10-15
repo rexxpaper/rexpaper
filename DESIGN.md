@@ -49,6 +49,10 @@ Containers are flat: `{card}` fill, 1px `{border}` edge, no shadow. Elevation
 exists only for transient overlays (menus, dialogs, popovers) that must read
 as floating above the layout.
 
+Gallery cards are visual-only: the thumbnail fills the frame edge to edge
+inside a 1px `{border}` edge — no filename captions under it. State badges
+(`Active`, progress) overlay the image.
+
 Lists and property rows are divided by hairline bottom borders, never by
 alternating fills or gaps.
 
@@ -56,6 +60,10 @@ Controls (buttons, toggles, inputs) share one silhouette: a small uniform
 radius, a 1px `{border}` edge when unfilled, and a neutral fill on hover.
 Keyboard focus is a visible 2px outline in `{text}` with offset — contrast
 again, not color.
+
+Interaction feedback is short and uniform: 150ms ease-out transitions on
+`transform`, `opacity`, and small local color changes (text, border, hover
+fills) — never on layout properties or large blur surfaces.
 
 Empty states are centered `{muted}` text in the view with one primary action
 to get started.
