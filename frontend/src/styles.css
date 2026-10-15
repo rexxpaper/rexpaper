@@ -19,6 +19,8 @@
 html,
 body {
   height: 100%;
+  /* Native form controls (inputs, scrollbars) render in the dark ramp. */
+  color-scheme: dark;
 }
 
 body {

@@ -6,10 +6,10 @@
 //! return the full updated `Settings` snapshot so the frontend can
 //! re-assign its store in one step.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 
 use rexpaper_core::settings::Settings;
 use rexpaper_core::{LiveWallpaperItem, SharedState, WallpaperItem};
@@ -74,11 +74,39 @@ pub fn set_mute_live_wallpapers(
     Ok(s.clone())
 }
 
+/// Opens a native folder picker for the static wallpaper library. Returns the
+/// updated `Settings`, or `null` when the dialog is cancelled. The chosen
+/// directory is granted to the asset protocol so thumbnails resolve.
+#[tauri::command(async)]
+pub async fn pick_wallpaper_dir(
+    app: tauri::AppHandle,
+    settings: State<'_, SettingsState>,
+) -> Result<Option<Settings>, String> {
+    let Some(handle) = rfd::AsyncFileDialog::new()
+        .set_title("Choose wallpaper folder")
+        .pick_folder()
+        .await
+    else {
+        return Ok(None);
+    };
+
+    let path = handle.path().to_path_buf();
+    app.asset_protocol_scope()
+        .allow_directory(&path, true)
+        .map_err(|e| e.to_string())?;
+
+    let mut s = settings.lock().map_err(|e| e.to_string())?;
+    s.set_wallpaper_dir(path);
+    Ok(Some(s.clone()))
+}
+
 /// Scans `settings.wallpaper_dir` and returns the flat item list; returns an
 /// empty list when no directory has been configured yet. Heavy: directory
-/// walk, so it runs off the main thread.
+/// walk, so it runs off the main thread. The directory is granted to the
+/// asset protocol so its thumbnails can load.
 #[tauri::command(async)]
 pub fn scan_static(
+    app: tauri::AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, SharedState>,
 ) -> Result<Vec<WallpaperItem>, String> {
@@ -90,6 +118,10 @@ pub fn scan_static(
     let Some(dir) = dir else {
         return Ok(Vec::new());
     };
+
+    app.asset_protocol_scope()
+        .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
 
     rexpaper_core::scanner::scan_static(&dir, state.inner().clone()).map_err(|e| e.to_string())?;
 
@@ -144,4 +176,128 @@ pub fn apply_static(
     s.wallpaper_mode = "static".to_string();
     s.save().map_err(|e| e.to_string())?;
     Ok(s.clone())
+}
+
+// --- Thumbnail resolution -------------------------------------------------
+
+/// One wallpaper path and its resolved cache thumbnail (`null` = generation
+/// failed or not possible for this file).
+#[derive(Clone, serde::Serialize)]
+pub struct ThumbnailEntry {
+    pub path: String,
+    pub thumb: Option<String>,
+}
+
+/// Response of [`resolve_thumbnails`]: thumbnails that already exist, plus
+/// the paths queued for background generation.
+#[derive(Clone, serde::Serialize)]
+pub struct ThumbnailResolution {
+    pub ready: Vec<ThumbnailEntry>,
+    pub pending: Vec<String>,
+}
+
+/// Payload of the `thumbnail-progress` event, emitted once per generated batch.
+#[derive(Clone, serde::Serialize)]
+pub struct ThumbnailBatch {
+    pub items: Vec<ThumbnailEntry>,
+    pub remaining: usize,
+}
+
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThumbnailKind {
+    Static,
+    Live,
+}
+
+/// Serializes thumbnail generation to one worker at a time: a second resolve
+/// waits here and then reports the already-valid cache files instead of two
+/// threads racing on the same output file.
+static THUMBNAIL_LOCK: Mutex<()> = Mutex::new(());
+
+fn thumbnail_path(kind: ThumbnailKind, wallpaper: &Path) -> Option<PathBuf> {
+    match kind {
+        ThumbnailKind::Static => rexpaper_core::thumbnail::static_thumbnail_path(wallpaper),
+        ThumbnailKind::Live => rexpaper_core::thumbnail::video_thumbnail_path(wallpaper),
+    }
+}
+
+fn precompute(kind: ThumbnailKind, paths: &[PathBuf]) {
+    match kind {
+        ThumbnailKind::Static => rexpaper_core::thumbnail::precompute_static_thumbnails(paths),
+        ThumbnailKind::Live => rexpaper_core::thumbnail::precompute_video_thumbnails(paths),
+    }
+}
+
+/// Resolves cached thumbnails for `paths` and starts background generation
+/// for the misses. Existing thumbnails return immediately; generated ones
+/// arrive later via `thumbnail-progress` events.
+#[tauri::command(async)]
+pub fn resolve_thumbnails(
+    paths: Vec<String>,
+    kind: ThumbnailKind,
+    app: tauri::AppHandle,
+) -> Result<ThumbnailResolution, String> {
+    let mut ready = Vec::new();
+    let mut work: Vec<(String, PathBuf)> = Vec::new();
+
+    for path in paths {
+        let wallpaper = PathBuf::from(&path);
+        match thumbnail_path(kind, &wallpaper) {
+            Some(thumb) => ready.push(ThumbnailEntry {
+                path,
+                thumb: Some(thumb.to_string_lossy().into_owned()),
+            }),
+            None => work.push((path, wallpaper)),
+        }
+    }
+
+    if !work.is_empty() {
+        let pending: Vec<String> = work.iter().map(|(original, _)| original.clone()).collect();
+        std::thread::Builder::new()
+            .name("rexpaper-thumbs".to_string())
+            .spawn(move || generate_thumbnails(work, kind, app))
+            .map_err(|e| e.to_string())?;
+        return Ok(ThumbnailResolution { ready, pending });
+    }
+
+    Ok(ThumbnailResolution {
+        ready,
+        pending: Vec::new(),
+    })
+}
+
+/// Generates thumbnails in batches on a worker thread, emitting one
+/// `thumbnail-progress` event per batch so the UI can drain its pending set.
+fn generate_thumbnails(paths: Vec<(String, PathBuf)>, kind: ThumbnailKind, app: tauri::AppHandle) {
+    let _guard = THUMBNAIL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let batch_size = match kind {
+        ThumbnailKind::Static => 24,
+        ThumbnailKind::Live => 8,
+    };
+    let total = paths.len();
+    let mut processed = 0usize;
+
+    for chunk in paths.chunks(batch_size) {
+        let originals: Vec<PathBuf> = chunk.iter().map(|(_, wallpaper)| wallpaper.clone()).collect();
+        precompute(kind, &originals);
+
+        let items = chunk
+            .iter()
+            .map(|(original, wallpaper)| ThumbnailEntry {
+                path: original.clone(),
+                thumb: thumbnail_path(kind, wallpaper).map(|t| t.to_string_lossy().into_owned()),
+            })
+            .collect();
+
+        processed += chunk.len();
+        let _ = app.emit(
+            "thumbnail-progress",
+            ThumbnailBatch {
+                items,
+                remaining: total - processed,
+            },
+        );
+    }
 }

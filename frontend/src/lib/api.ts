@@ -52,3 +52,32 @@ export const scanLive = (): Promise<LiveWallpaperItem[]> => invoke("scan_live");
 
 export const applyStatic = (path: string): Promise<Settings> =>
   invoke("apply_static", { path });
+
+/** Native folder picker for the static library; `null` when cancelled. */
+export const pickWallpaperDir = (): Promise<Settings | null> =>
+  invoke("pick_wallpaper_dir");
+
+/** One wallpaper path and its resolved cache thumbnail. */
+export interface ThumbnailEntry {
+  path: string;
+  thumb: string | null;
+}
+
+/** Response of `resolve_thumbnails`: cached thumbs + queued paths. */
+export interface ThumbnailResolution {
+  ready: ThumbnailEntry[];
+  pending: string[];
+}
+
+/** Payload of the `thumbnail-progress` event. */
+export interface ThumbnailBatch {
+  items: ThumbnailEntry[];
+  remaining: number;
+}
+
+export type ThumbnailKind = "static" | "live";
+
+export const resolveThumbnails = (
+  paths: string[],
+  kind: ThumbnailKind,
+): Promise<ThumbnailResolution> => invoke("resolve_thumbnails", { paths, kind });
