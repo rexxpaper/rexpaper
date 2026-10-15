@@ -1,56 +1,50 @@
 fn main() {
-    // Locate the mpv import library (mpv.lib) needed to link the `libmpv` crate.
-    // Paths are resolved from the repository root (this crate lives at crates/rexpaper-core).
+    // Live wallpapers are rendered by spawning `mpv.exe` as a child process,
+    // so the build only needs to make `mpv.exe` available next to the built
+    // binaries. There is no libmpv linking (the app spawns mpv rather than
+    // embedding it), so no import library is required.
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
     let repo_root = std::path::Path::new(&crate_dir)
         .join("..")
         .join("..")
         .canonicalize()
         .unwrap_or_else(|_| std::path::PathBuf::from(&crate_dir));
-    let local_lib_dir = repo_root.join("mpv-lib");
-    let char_dir = local_lib_dir.to_string_lossy().into_owned();
 
-    let mpv_lib_dir = match std::env::var("MPV_LIB_DIR") {
-        Ok(dir) if !dir.trim().is_empty() => dir,
-        _ if local_lib_dir.join("mpv.lib").exists() => char_dir,
-        _ => String::new(),
-    };
+    println!(
+        "cargo:rerun-if-changed={}",
+        repo_root.join("mpv").join("mpv.exe").display()
+    );
 
-    if !mpv_lib_dir.trim().is_empty() {
-        println!("cargo:rustc-link-search=native={}", mpv_lib_dir);
+    // Copy into the default target profile directories.
+    for profile in ["debug", "release"] {
+        copy_mpv_exe(&repo_root, &repo_root.join("target").join(profile));
     }
 
-    // Helper to copy mpv runtime files (exe + DLLs) into a target folder so the
-    // built executables can find them next to their own binary.
-    let copy_mpv_to_dir = |target_dir: &std::path::Path| {
-        let mpv_src_dir = repo_root.join("mpv");
-        if mpv_src_dir.exists() && target_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&mpv_src_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name() {
-                        let _ = std::fs::copy(&path, target_dir.join(name));
-                    }
-                }
-            }
-            let libmpv2 = mpv_src_dir.join("libmpv-2.dll");
-            if libmpv2.exists() {
-                let _ = std::fs::copy(&libmpv2, target_dir.join("mpv.dll"));
-                let _ = std::fs::copy(&libmpv2, target_dir.join("mpv-2.dll"));
-                let _ = std::fs::copy(&libmpv2, target_dir.join("libmpv-2.dll"));
-            }
-        }
-    };
-
-    // 1. Copy via OUT_DIR ancestry (target/debug or target/release)
+    // Also cover custom target directories via the OUT_DIR ancestry
+    // (…/target/<profile>/build/<crate>/out -> …/target/<profile>).
     if let Ok(out_dir) = std::env::var("OUT_DIR") {
-        let out_path = std::path::Path::new(&out_dir);
-        if let Some(target_dir) = out_path.ancestors().nth(3) {
-            copy_mpv_to_dir(target_dir);
+        if let Some(target_dir) = std::path::Path::new(&out_dir).ancestors().nth(3) {
+            copy_mpv_exe(&repo_root, target_dir);
         }
     }
+}
 
-    // 2. Explicitly ensure target/release and target/debug get copies if they exist
-    copy_mpv_to_dir(&repo_root.join("target").join("debug"));
-    copy_mpv_to_dir(&repo_root.join("target").join("release"));
+/// Copies `mpv/mpv.exe` into `target_dir` only when it is missing or its size
+/// differs, so repeated builds do not re-copy a ~114 MB binary.
+fn copy_mpv_exe(repo_root: &std::path::Path, target_dir: &std::path::Path) {
+    let src = repo_root.join("mpv").join("mpv.exe");
+    if !src.exists() || !target_dir.exists() {
+        return;
+    }
+    let dest = target_dir.join("mpv.exe");
+
+    let needs_copy = match (std::fs::metadata(&src), std::fs::metadata(&dest)) {
+        (Ok(src_meta), Ok(dest_meta)) => src_meta.len() != dest_meta.len(),
+        (Ok(_), Err(_)) => true,
+        _ => false,
+    };
+
+    if needs_copy {
+        let _ = std::fs::copy(&src, &dest);
+    }
 }

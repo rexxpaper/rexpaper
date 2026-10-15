@@ -118,7 +118,7 @@ Known dev-workaround: the registry write for "run on startup" must stay guarded 
 | **UI** | <img src="https://img.shields.io/badge/Preact-+Vite-673AB7?style=flat-square" alt="Preact" /> Preact + Vite + TypeScript | Minimal SPA with Preact Signals state |
 | **Styling** | <img src="https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?style=flat-square" alt="Tailwind" /> Tailwind CSS v4 | Flat, hairline-bordered design language |
 | **Core Library** | <img src="https://img.shields.io/badge/rexpaper--core-workspace-orange?style=flat-square" alt="rexpaper-core" /> `crates/rexpaper-core` | UI-free backend: scanner, settings, wallpaper, tray, thumbnails |
-| **Video Engine** | <img src="https://img.shields.io/badge/mpv-libmpv-darkblue?style=flat-square" alt="mpv" /> libmpv & mpv (D3D11) | Hardware-accelerated playback and frame extraction |
+| **Video Engine** | <img src="https://img.shields.io/badge/mpv-darkblue?style=flat-square" alt="mpv" /> mpv (D3D11) | Hardware-accelerated playback and frame extraction |
 | **Win32 OS APIs** | <img src="https://img.shields.io/badge/windows--rs-0.61-blue?style=flat-square&logo=windows" alt="windows-rs" /> windows-rs (0.61) | `WorkerW` injection, `Shell_NotifyIconW`, HiDPI |
 | **Dialogs** | <img src="https://img.shields.io/badge/rfd-0.15-green?style=flat-square" alt="rfd" /> rfd (0.15) | Native Windows folder pickers |
 | **Packaging** | <img src="https://img.shields.io/badge/NSIS-via%20Tauri-orange?style=flat-square" alt="NSIS" /> NSIS (Tauri bundler) | Windows installer |
@@ -132,7 +132,7 @@ Known dev-workaround: the registry write for "run on startup" must stay guarded 
 - [Rust & Cargo](https://www.rust-lang.org/tools/install) (Edition 2024 / 1.85+)
 - [Node.js](https://nodejs.org/) 20+
 - Windows 10 SDK or later
-- mpv runtime (`mpv/`) and import library (`mpv-lib/mpv.lib`, or set `MPV_LIB_DIR`) — required to link and run
+- mpv runtime (`mpv/mpv.exe`) — required to run live wallpapers
 
 ### Build and Run
 
@@ -164,14 +164,12 @@ rexpaper/
 │   └── logo.png             # RexPaper brand logo
 ├── crates/
 │   └── rexpaper-core/       # UI-free Rust backend library
-│       ├── build.rs         # mpv link-search + runtime DLL staging
+│       ├── build.rs         # Stages mpv.exe next to the built binary
 │       └── src/
 │           ├── scanner.rs       # Recursive filesystem wallpaper scanner
 │           ├── thumbnail.rs     # Multi-core thumbnail precompute & disk cache
 │           ├── settings.rs      # JSON settings + autostart registry
 │           ├── static_wallpaper.rs  # Win32 wallpaper application
-│           ├── live_wallpaper.rs    # Live wallpaper coordinator
-│           ├── mpv_player.rs        # libmpv bindings
 │           └── platform/           # WorkerW injection + system tray
 ├── src-tauri/               # Tauri v2 app (commands, events, config)
 │   ├── src/main.rs          # Entry point, command registration
@@ -179,8 +177,7 @@ rexpaper/
 │   └── tauri.conf.json      # Window, dev server, NSIS bundle config
 ├── frontend/                # Preact + Vite + TypeScript + Tailwind
 │   └── src/                 # App, pages, typed API mirror
-├── mpv/                     # mpv runtime binaries & DLLs (local)
-├── mpv-lib/                 # mpv.lib import library (local)
+├── mpv/                     # mpv runtime binary (mpv.exe, local)
 ├── docs/specs/              # Design specs
 └── LICENSE                  # GNU General Public License v3.0
 ```

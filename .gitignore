@@ -25,13 +25,14 @@ test_*.rs
 DEV_WINDOWS_FIX_NOTES.md
 DEV_*.md
 
-# Locally generated mpv import library (mpv.lib) and download staging
-/mpv-lib
-/mpv-dev.7z
-/mpv.7z
-/mpv-dev/
-/mpv-runtime/
+# Tauri-generated ACL schemas (regenerated on every build)
+/src-tauri/gen/schemas/
+
+# Local mpv runtime (mpv.exe) — downloaded, not committed
 /mpv/
+/mpv.7z
+/mpv-dev.7z
+/mpv-dev/
 /mpv-staging/
 
 # Frontend (Preact + Vite)
