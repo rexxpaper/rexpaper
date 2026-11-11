@@ -37,10 +37,6 @@
 
 It manages thousands of ultra-high-resolution 4K/8K static wallpapers or renders seamless 60+ FPS live video wallpapers behind your desktop icons, with minimal resource usage and zero UI stutter.
 
-> **Status:** the Slint app has been fully replaced by the Tauri v2 + Preact rewrite. Static and live galleries, settings, tray, autostart, and fullscreen auto-pause all ship, and tagged builds produce a standalone Windows installer. See [`docs/specs/tauri-v2-migration.md`](docs/specs/tauri-v2-migration.md).
-
----
-
 ## Current Status
 
 _Last updated 2026-10-15._
