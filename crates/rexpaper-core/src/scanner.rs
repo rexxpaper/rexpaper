@@ -1,29 +1,35 @@
+use crate::{LiveWallpaperItem, SharedState, WallpaperItem};
 use std::path::Path;
 use walkdir::WalkDir;
-use crate::{SharedState, WallpaperItem, LiveWallpaperItem};
 
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp", "gif", "avif", "tiff", "tif"];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "bmp", "gif", "avif", "tiff", "tif",
+];
 const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "webm", "mkv", "mov", "avi", "flv", "m4v", "gif", "mpg", "mpeg", "wmv",
-    "ts", "m2ts", "mts", "ogv", "ogg", "3gp", "vob"
+    "mp4", "webm", "mkv", "mov", "avi", "flv", "m4v", "gif", "mpg", "mpeg", "wmv", "ts", "m2ts",
+    "mts", "ogv", "ogg", "3gp", "vob",
 ];
 
 pub fn scan_static(root: &Path, state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
     let mut items = Vec::new();
 
-    for entry in WalkDir::new(root).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
 
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-                items.push(WallpaperItem {
-                    path: path.to_path_buf(),
-                    category: get_category(root, path),
-                });
-            }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+        {
+            items.push(WallpaperItem {
+                path: path.to_path_buf(),
+                category: get_category(root, path),
+            });
         }
     }
 
@@ -39,20 +45,24 @@ pub fn scan_static(root: &Path, state: SharedState) -> Result<(), Box<dyn std::e
 pub fn scan_live(root: &Path, state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
     let mut items = Vec::new();
 
-    for entry in WalkDir::new(root).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(root)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
 
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-                items.push(LiveWallpaperItem {
-                    path: path.to_path_buf(),
-                    category: get_category(root, path),
-                    duration: None,
-                });
-            }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+        {
+            items.push(LiveWallpaperItem {
+                path: path.to_path_buf(),
+                category: get_category(root, path),
+                duration: None,
+            });
         }
     }
 
@@ -92,7 +102,13 @@ mod tests {
 
     #[test]
     fn test_scan_static_and_live_wallpapers() {
-        let temp_dir = std::env::temp_dir().join(format!("rexpaper_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "rexpaper_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let anime_sub = temp_dir.join("Anime");
         let nature_sub = temp_dir.join("Nature");
         std::fs::create_dir_all(&anime_sub).unwrap();

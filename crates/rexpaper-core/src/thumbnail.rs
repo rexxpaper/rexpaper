@@ -1,10 +1,10 @@
+use rayon::prelude::*;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
-use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const THUMB_WIDTH: u32 = 384;
 const THUMB_HEIGHT: u32 = 216;
@@ -109,7 +109,11 @@ fn hash_path(path: &Path) -> u64 {
 /// 2. Falls back to mpv image output extraction if available.
 ///
 /// Returns the output path when a valid thumbnail was produced.
-pub fn extract_video_thumbnail(video_path: &Path, cache_dir: &Path, out_path: &Path) -> Option<PathBuf> {
+pub fn extract_video_thumbnail(
+    video_path: &Path,
+    cache_dir: &Path,
+    out_path: &Path,
+) -> Option<PathBuf> {
     let _ = std::fs::create_dir_all(cache_dir);
 
     // 1. Try Windows Shell native thumbnail extraction
@@ -131,17 +135,17 @@ pub fn extract_video_thumbnail(video_path: &Path, cache_dir: &Path, out_path: &P
 #[cfg(target_os = "windows")]
 fn extract_thumbnail_via_shell(video_path: &Path, out_path: &Path) -> bool {
     use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
     use windows::Win32::Foundation::SIZE;
     use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, BITMAPINFO, BITMAPINFOHEADER,
-        BI_RGB, DIB_RGB_COLORS,
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC,
+        DeleteObject, GetDIBits,
     };
-    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+    use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
     use windows::Win32::UI::Shell::{
         IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
         SIIGBF_RESIZETOFIT,
     };
+    use windows::core::PCWSTR;
 
     unsafe {
         let com_init = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
@@ -162,48 +166,50 @@ fn extract_thumbnail_via_shell(video_path: &Path, out_path: &Path) -> bool {
                 cx: THUMB_WIDTH as i32,
                 cy: THUMB_HEIGHT as i32,
             };
-            if let Ok(hbitmap) = factory.GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK) {
-                if !hbitmap.0.is_null() {
-                    let mut bmi = BITMAPINFO {
-                        bmiHeader: BITMAPINFOHEADER {
-                            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                            biWidth: THUMB_WIDTH as i32,
-                            biHeight: -(THUMB_HEIGHT as i32), // Top-down DIB
-                            biPlanes: 1,
-                            biBitCount: 32,
-                            biCompression: BI_RGB.0,
-                            ..Default::default()
-                        },
+            if let Ok(hbitmap) = factory.GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)
+                && !hbitmap.0.is_null()
+            {
+                let mut bmi = BITMAPINFO {
+                    bmiHeader: BITMAPINFOHEADER {
+                        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                        biWidth: THUMB_WIDTH as i32,
+                        biHeight: -(THUMB_HEIGHT as i32), // Top-down DIB
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: BI_RGB.0,
                         ..Default::default()
-                    };
+                    },
+                    ..Default::default()
+                };
 
-                    let hdc = CreateCompatibleDC(None);
-                    let mut buffer = vec![0u8; (THUMB_WIDTH * THUMB_HEIGHT * 4) as usize];
+                let hdc = CreateCompatibleDC(None);
+                let mut buffer = vec![0u8; (THUMB_WIDTH * THUMB_HEIGHT * 4) as usize];
 
-                    let lines = GetDIBits(
-                        hdc,
-                        hbitmap,
-                        0,
-                        THUMB_HEIGHT,
-                        Some(buffer.as_mut_ptr() as *mut _),
-                        &mut bmi,
-                        DIB_RGB_COLORS,
-                    );
+                let lines = GetDIBits(
+                    hdc,
+                    hbitmap,
+                    0,
+                    THUMB_HEIGHT,
+                    Some(buffer.as_mut_ptr() as *mut _),
+                    &mut bmi,
+                    DIB_RGB_COLORS,
+                );
 
-                    let _ = DeleteDC(hdc);
-                    let _ = DeleteObject(hbitmap.into());
+                let _ = DeleteDC(hdc);
+                let _ = DeleteObject(hbitmap.into());
 
-                    if lines as u32 == THUMB_HEIGHT {
-                        // Buffer is in BGRA format; convert to RGBA
-                        for chunk in buffer.chunks_exact_mut(4) {
-                            chunk.swap(0, 2); // Swap B and R
-                        }
+                if lines as u32 == THUMB_HEIGHT {
+                    // Buffer is in BGRA format; convert to RGBA
+                    for chunk in buffer.as_chunks_mut::<4>().0 {
+                        chunk.swap(0, 2); // Swap B and R
+                    }
 
-                        if let Some(rgba_img) = image::RgbaImage::from_raw(THUMB_WIDTH, THUMB_HEIGHT, buffer) {
-                            let rgb_img = image::DynamicImage::ImageRgba8(rgba_img).into_rgb8();
-                            if rgb_img.save(out_path).is_ok() {
-                                success = true;
-                            }
+                    if let Some(rgba_img) =
+                        image::RgbaImage::from_raw(THUMB_WIDTH, THUMB_HEIGHT, buffer)
+                    {
+                        let rgb_img = image::DynamicImage::ImageRgba8(rgba_img).into_rgb8();
+                        if rgb_img.save(out_path).is_ok() {
+                            success = true;
                         }
                     }
                 }
@@ -252,20 +258,20 @@ fn extract_thumbnail_via_mpv(video_path: &Path, cache_dir: &Path, out_path: &Pat
             &video_path.to_string_lossy(),
         ]);
 
-        if let Ok(status) = cmd.status() {
-            if status.success() {
-                // Find any output image generated in temp_out_dir
-                if let Ok(entries) = std::fs::read_dir(&temp_out_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_file() {
-                            if let Ok(dynamic_img) = image::open(&path) {
-                                let thumb = dynamic_img.thumbnail_exact(THUMB_WIDTH, THUMB_HEIGHT);
-                                if thumb.save(out_path).is_ok() {
-                                    extracted = true;
-                                    break;
-                                }
-                            }
+        if let Ok(status) = cmd.status()
+            && status.success()
+        {
+            // Find any output image generated in temp_out_dir
+            if let Ok(entries) = std::fs::read_dir(&temp_out_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file()
+                        && let Ok(dynamic_img) = image::open(&path)
+                    {
+                        let thumb = dynamic_img.thumbnail_exact(THUMB_WIDTH, THUMB_HEIGHT);
+                        if thumb.save(out_path).is_ok() {
+                            extracted = true;
+                            break;
                         }
                     }
                 }
@@ -282,21 +288,31 @@ fn extract_thumbnail_via_mpv(video_path: &Path, cache_dir: &Path, out_path: &Pat
 }
 
 fn find_mpv_for_thumbnail() -> Option<PathBuf> {
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
-            let p1 = exe_dir.join("mpv.exe");
-            if p1.exists() { return Some(p1); }
-            let p2 = exe_dir.join("mpv").join("mpv.exe");
-            if p2.exists() { return Some(p2); }
+    if let Ok(current_exe) = std::env::current_exe()
+        && let Some(exe_dir) = current_exe.parent()
+    {
+        let p1 = exe_dir.join("mpv.exe");
+        if p1.exists() {
+            return Some(p1);
+        }
+        let p2 = exe_dir.join("mpv").join("mpv.exe");
+        if p2.exists() {
+            return Some(p2);
         }
     }
     let p3 = std::path::Path::new("mpv").join("mpv.exe");
     if p3.exists() {
-        if let Ok(abs) = p3.canonicalize() { return Some(abs); }
+        if let Ok(abs) = p3.canonicalize() {
+            return Some(abs);
+        }
         return Some(p3);
     }
     if let Ok(path) = which::which("mpv") {
-        if path.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+        if path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false)
+        {
             return Some(path);
         }
         let sibling_exe = path.with_extension("exe");
@@ -320,31 +336,31 @@ mod tests {
     #[test]
     fn test_extract_video_thumbnail_real_or_fallback() {
         let test_dir = PathBuf::from(r"C:\stuff ricing\live-papers");
-        if test_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&test_dir) {
-                let video_files: Vec<PathBuf> = entries
-                    .flatten()
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        p.extension()
-                            .and_then(|ext| ext.to_str())
-                            .map(|s| s == "mp4" || s == "webm")
-                            .unwrap_or(false)
-                    })
-                    .collect();
+        if test_dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&test_dir)
+        {
+            let video_files: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|s| s == "mp4" || s == "webm")
+                        .unwrap_or(false)
+                })
+                .collect();
 
-                if let Some(video) = video_files.first() {
-                    let temp_cache = std::env::temp_dir().join("rexpaper_test_thumb_cache");
-                    let out_path = temp_cache.join("test_out.jpg");
-                    let _ = std::fs::create_dir_all(&temp_cache);
+            if let Some(video) = video_files.first() {
+                let temp_cache = std::env::temp_dir().join("rexpaper_test_thumb_cache");
+                let out_path = temp_cache.join("test_out.jpg");
+                let _ = std::fs::create_dir_all(&temp_cache);
 
-                    let result = extract_video_thumbnail(video, &temp_cache, &out_path);
-                    assert!(out_path.exists(), "Thumbnail file should be generated");
-                    assert!(out_path.metadata().unwrap().len() > MIN_VALID_THUMB_BYTES);
-                    assert!(result.is_some());
+                let result = extract_video_thumbnail(video, &temp_cache, &out_path);
+                assert!(out_path.exists(), "Thumbnail file should be generated");
+                assert!(out_path.metadata().unwrap().len() > MIN_VALID_THUMB_BYTES);
+                assert!(result.is_some());
 
-                    let _ = std::fs::remove_dir_all(&temp_cache);
-                }
+                let _ = std::fs::remove_dir_all(&temp_cache);
             }
         }
     }

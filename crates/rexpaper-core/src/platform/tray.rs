@@ -1,11 +1,12 @@
 use std::sync::Arc;
-use windows::core::w;
+use std::sync::atomic::{AtomicBool, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::{PCWSTR, w};
 
 const WM_TRAYICON: u32 = WM_USER + 101;
 const ID_TRAY_OPEN: usize = 1001;
@@ -13,6 +14,17 @@ const ID_TRAY_STATIC: usize = 1002;
 const ID_TRAY_LIVE: usize = 1003;
 const ID_TRAY_SETTINGS: usize = 1004;
 const ID_TRAY_QUIT: usize = 1005;
+const ID_TRAY_PAUSE: usize = 1006;
+const ID_TRAY_NEXT: usize = 1007;
+const ID_TRAY_FOLDER: usize = 1008;
+
+/// Mirrors the live-wallpaper paused state so the tray label stays in sync.
+static TRAY_PAUSED: AtomicBool = AtomicBool::new(false);
+
+/// Updates the Pause/Resume label used the next time the tray menu opens.
+pub fn set_tray_paused(paused: bool) {
+    TRAY_PAUSED.store(paused, Ordering::SeqCst);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
@@ -20,6 +32,9 @@ pub enum TrayAction {
     StaticPage,
     LivePage,
     SettingsPage,
+    TogglePause,
+    NextWallpaper,
+    OpenFolder,
     Quit,
 }
 
@@ -100,9 +115,39 @@ where
                         if !menu.0.is_null() {
                             let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, w!("Open RexPaper"));
                             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-                            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_STATIC, w!("Static Wallpapers"));
-                            let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_LIVE, w!("Live Wallpapers"));
+                            let _ = AppendMenuW(
+                                menu,
+                                MF_STRING,
+                                ID_TRAY_STATIC,
+                                w!("Static Wallpapers"),
+                            );
+                            let _ =
+                                AppendMenuW(menu, MF_STRING, ID_TRAY_LIVE, w!("Live Wallpapers"));
                             let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_SETTINGS, w!("Settings"));
+                            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+
+                            let pause_label = if TRAY_PAUSED.load(Ordering::SeqCst) {
+                                "Resume Live Wallpaper"
+                            } else {
+                                "Pause Live Wallpaper"
+                            };
+                            let pause_wide: Vec<u16> =
+                                pause_label.encode_utf16().chain(Some(0)).collect();
+                            let _ = AppendMenuW(
+                                menu,
+                                MF_STRING,
+                                ID_TRAY_PAUSE,
+                                PCWSTR(pause_wide.as_ptr()),
+                            );
+                            let _ =
+                                AppendMenuW(menu, MF_STRING, ID_TRAY_NEXT, w!("Next Wallpaper"));
+                            let _ = AppendMenuW(
+                                menu,
+                                MF_STRING,
+                                ID_TRAY_FOLDER,
+                                w!("Open Wallpaper Folder"),
+                            );
+
                             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
                             let _ = AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, w!("Quit RexPaper"));
 
@@ -122,6 +167,9 @@ where
                                 ID_TRAY_STATIC => callback(TrayAction::StaticPage),
                                 ID_TRAY_LIVE => callback(TrayAction::LivePage),
                                 ID_TRAY_SETTINGS => callback(TrayAction::SettingsPage),
+                                ID_TRAY_PAUSE => callback(TrayAction::TogglePause),
+                                ID_TRAY_NEXT => callback(TrayAction::NextWallpaper),
+                                ID_TRAY_FOLDER => callback(TrayAction::OpenFolder),
                                 ID_TRAY_QUIT => callback(TrayAction::Quit),
                                 _ => {}
                             }
@@ -168,10 +216,9 @@ unsafe fn load_tray_icon() -> HICON {
             cx,
             cy,
             LR_DEFAULTCOLOR,
-        ) {
-            if !h.0.is_null() {
-                return HICON(h.0);
-            }
+        ) && !h.0.is_null()
+        {
+            return HICON(h.0);
         }
 
         // 3. Try loading resource ID 1
@@ -182,10 +229,9 @@ unsafe fn load_tray_icon() -> HICON {
             cx,
             cy,
             LR_DEFAULTCOLOR,
-        ) {
-            if !h.0.is_null() {
-                return HICON(h.0);
-            }
+        ) && !h.0.is_null()
+        {
+            return HICON(h.0);
         }
 
         // 4. Fallback default
@@ -209,7 +255,11 @@ unsafe fn load_hicon_from_ico_bytes(data: &[u8], target_w: i32, target_h: i32) -
 
         for i in 0..count {
             let entry_offset = 6 + i * 16;
-            let w = if data[entry_offset] == 0 { 256 } else { data[entry_offset] as i32 };
+            let w = if data[entry_offset] == 0 {
+                256
+            } else {
+                data[entry_offset] as i32
+            };
             let dw_bytes = u32::from_le_bytes([
                 data[entry_offset + 8],
                 data[entry_offset + 9],
@@ -241,10 +291,9 @@ unsafe fn load_hicon_from_ico_bytes(data: &[u8], target_w: i32, target_h: i32) -
                 target_w,
                 target_h,
                 LR_DEFAULTCOLOR,
-            ) {
-                if !hicon.0.is_null() {
-                    return Some(hicon);
-                }
+            ) && !hicon.0.is_null()
+            {
+                return Some(hicon);
             }
         }
 

@@ -1,0 +1,49 @@
+[package]
+name = "rexpaper-app"
+version = "1.0.7"
+edition = "2024"
+description = "A fast, native wallpaper manager for Windows with mpv live wallpapers"
+license = "GPL-3.0"
+repository = "https://github.com/rexxpaper/rexpaper"
+publish = false
+
+[[bin]]
+name = "rexpaper"
+path = "src/main.rs"
+
+[dependencies]
+rexpaper-core = { path = "../crates/rexpaper-core" }
+eframe = { version = "0.31.1", default-features = false, features = ["default_fonts", "glow"] }
+image = { version = "0.25", default-features = false, features = [
+    "bmp",
+    "gif",
+    "ico",
+    "jpeg",
+    "png",
+    "tiff",
+    "webp",
+    "avif",
+] }
+rfd = "0.15"
+rand = "0.9"
+
+[build-dependencies]
+winresource = "0.1"
+
+[package.metadata.packager]
+product_name = "RexPaper"
+identifier = "com.rexpaper.app"
+publisher = "rexxpaper"
+short_description = "A fast, native wallpaper manager for Windows."
+long_description = "RexPaper manages static and mpv-powered live wallpapers on Windows, with a system tray, autostart, and fullscreen auto-pause."
+homepage = "https://github.com/rexxpaper/rexpaper"
+icons = ["../assets/icon.ico"]
+out_dir = "../dist"
+targets = ["nsis"]
+resources = { "mpv/mpv.exe" = "mpv/mpv.exe" }
+
+[package.metadata.packager.nsis]
+install_mode = "currentUser"
+installer_icon = "../assets/icon.ico"
+installer_hooks = "installer/hooks.nsh"
+languages = ["English"]

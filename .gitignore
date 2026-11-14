@@ -1,4 +1,5 @@
 /target
+/dist
 
 # Rust
 *.swp
@@ -25,13 +26,6 @@ test_*.rs
 DEV_WINDOWS_FIX_NOTES.md
 DEV_*.md
 
-# Tauri-generated ACL schemas (regenerated on every build)
-/src-tauri/gen/schemas/
-
-# Local mpv runtime (mpv.exe) — fetched by scripts/fetch-mpv.ps1, not committed
-/src-tauri/mpv/
-/src-tauri/mpv.7z
-
-# Frontend (Preact + Vite)
-/node_modules/
-/frontend/dist
+# Local mpv runtime (mpv.exe) - fetched by scripts/fetch-mpv.ps1, not committed
+/app/mpv/
+/app/mpv.7z

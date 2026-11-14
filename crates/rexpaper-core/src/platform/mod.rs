@@ -1,2 +1,2 @@
-pub mod windows;
 pub mod tray;
+pub mod windows;

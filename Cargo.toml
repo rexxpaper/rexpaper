@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/rexpaper-core", "src-tauri"]
+members = ["crates/rexpaper-core", "app"]
 resolver = "2"
 
 [profile.release]

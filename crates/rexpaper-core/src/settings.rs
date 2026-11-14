@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-#[cfg(not(debug_assertions))]
-use std::os::windows::ffi::OsStrExt;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+#[cfg(not(debug_assertions))]
+use std::os::windows::ffi::OsStrExt;
+use std::path::PathBuf;
 #[cfg(not(debug_assertions))]
 use windows::Win32::System::Registry::*;
 #[cfg(not(debug_assertions))]
@@ -50,10 +50,10 @@ impl Settings {
     pub fn load() -> Self {
         if let Some(dirs) = ProjectDirs::from("com", "rexpaper", "RexPaper") {
             let config_path = dirs.config_dir().join("settings.json");
-            if let Ok(content) = std::fs::read_to_string(&config_path) {
-                if let Ok(settings) = serde_json::from_str(&content) {
-                    return settings;
-                }
+            if let Ok(content) = std::fs::read_to_string(&config_path)
+                && let Ok(settings) = serde_json::from_str(&content)
+            {
+                return settings;
             }
         }
         Settings::default()
@@ -107,11 +107,12 @@ impl Settings {
 
         #[cfg(not(debug_assertions))]
         unsafe {
-            let key_path: Vec<u16> = std::ffi::OsStr::new(r"Software\Microsoft\Windows\CurrentVersion\Run")
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
-            
+            let key_path: Vec<u16> =
+                std::ffi::OsStr::new(r"Software\Microsoft\Windows\CurrentVersion\Run")
+                    .encode_wide()
+                    .chain(Some(0))
+                    .collect();
+
             let mut hkey = HKEY(std::ptr::null_mut());
             let result = RegOpenKeyExW(
                 HKEY_CURRENT_USER,
@@ -120,18 +121,19 @@ impl Settings {
                 KEY_SET_VALUE,
                 &mut hkey,
             );
-            
+
             if result.0 == 0 {
                 let app_name: Vec<u16> = std::ffi::OsStr::new("RexPaper")
                     .encode_wide()
                     .chain(Some(0))
                     .collect();
-                
+
                 if enabled {
                     if let Ok(exe_path) = std::env::current_exe() {
                         let cmd_str = format!("\"{}\" --autostart --minimized", exe_path.display());
                         let value: Vec<u16> = cmd_str.encode_utf16().chain(Some(0)).collect();
-                        let value_bytes: Vec<u8> = value.iter().flat_map(|c| c.to_le_bytes()).collect();
+                        let value_bytes: Vec<u8> =
+                            value.iter().flat_map(|c| c.to_le_bytes()).collect();
                         let _ = RegSetValueExW(
                             hkey,
                             PCWSTR(app_name.as_ptr()),

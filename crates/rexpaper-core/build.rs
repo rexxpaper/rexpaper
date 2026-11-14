@@ -10,10 +10,10 @@ fn main() {
         .canonicalize()
         .unwrap_or_else(|_| std::path::PathBuf::from(&crate_dir));
 
-    // Canonical runtime location. This is also the path Tauri bundles as a
-    // resource, so the installed app finds the binary at `$INSTDIR\mpv\mpv.exe`
-    // (which `find_mpv_executable` checks directly).
-    let src = repo_root.join("src-tauri").join("mpv").join("mpv.exe");
+    // Canonical runtime location. This is also the path cargo-packager
+    // bundles as a resource, so the installed app finds the binary at
+    // `$INSTDIR\mpv\mpv.exe` (which `find_mpv_executable` checks directly).
+    let src = repo_root.join("app").join("mpv").join("mpv.exe");
     println!("cargo:rerun-if-changed={}", src.display());
 
     // Copy into the default target profile directories for `cargo run`/dev.
@@ -23,10 +23,10 @@ fn main() {
 
     // Also cover custom target directories via the OUT_DIR ancestry
     // (…/target/<profile>/build/<crate>/out -> …/target/<profile>).
-    if let Ok(out_dir) = std::env::var("OUT_DIR") {
-        if let Some(target_dir) = std::path::Path::new(&out_dir).ancestors().nth(3) {
-            copy_mpv_exe(&src, target_dir);
-        }
+    if let Ok(out_dir) = std::env::var("OUT_DIR")
+        && let Some(target_dir) = std::path::Path::new(&out_dir).ancestors().nth(3)
+    {
+        copy_mpv_exe(&src, target_dir);
     }
 }
 

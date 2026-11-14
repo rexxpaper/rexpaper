@@ -1,24 +1,29 @@
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
-use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use windows::Win32::Foundation::*;
-use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::Win32::Graphics::Gdi::{RedrawWindow, UpdateWindow, RDW_INVALIDATE, RDW_ERASE, RDW_ALLCHILDREN};
+use windows::Win32::Graphics::Gdi::{
+    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RedrawWindow, UpdateWindow,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::{OpenProcess, GetExitCodeProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows::Win32::System::Threading::{
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::BOOL;
 
 static MPV_PROCESS_ID: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
 static IS_WALLPAPER_ACTIVE: AtomicBool = AtomicBool::new(false);
-static CURRENT_LIVE_PATH: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+static CURRENT_LIVE_PATH: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
 static IS_PAUSED_FOR_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 static DESKTOP_HOST_WINDOW: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
 static HOST_CLASS_REGISTERED: AtomicBool = AtomicBool::new(false);
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 const WS_EX_NOREDIRECTIONBITMAP: isize = 0x00200000;
 /// HWND_BOTTOM sentinel from WinUser.h (1); HWND_TOP is NULL (0).
-const HWND_BOTTOM: HWND = HWND(1 as *mut std::ffi::c_void);
+const HWND_BOTTOM: HWND = HWND(std::ptr::dangling_mut::<std::ffi::c_void>());
 
 /// Verbose per-call diagnostics are only emitted when REXPAPER_DEBUG is set.
 fn debug_enabled() -> bool {
@@ -30,20 +35,32 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
         return Err(format!("Video file not found: {}", video_path.display()).into());
     }
 
-    eprintln!("[RexPaper] apply_live_wallpaper called for: {}", video_path.display());
+    eprintln!(
+        "[RexPaper] apply_live_wallpaper called for: {}",
+        video_path.display()
+    );
     stop_live_wallpaper()?;
 
     let wallpaper_hwnd = resolve_live_wallpaper_hwnd()?;
     let hwnd = wallpaper_hwnd.0 as usize;
-    eprintln!("[RexPaper] apply_live_wallpaper: Using wallpaper HWND: {:?} (as usize: {})", wallpaper_hwnd.0, hwnd);
+    eprintln!(
+        "[RexPaper] apply_live_wallpaper: Using wallpaper HWND: {:?} (as usize: {})",
+        wallpaper_hwnd.0, hwnd
+    );
     let mpv_exe = find_mpv_executable()?;
 
     // Ensure the desktop wallpaper canvas is visible and active
     unsafe {
         let show_result = ShowWindow(wallpaper_hwnd, SW_SHOW);
-        eprintln!("[RexPaper] apply_live_wallpaper: ShowWindow(SW_SHOW) result: {:?}", show_result);
+        eprintln!(
+            "[RexPaper] apply_live_wallpaper: ShowWindow(SW_SHOW) result: {:?}",
+            show_result
+        );
         let update_result = UpdateWindow(wallpaper_hwnd);
-        eprintln!("[RexPaper] apply_live_wallpaper: UpdateWindow result: {:?}", update_result);
+        eprintln!(
+            "[RexPaper] apply_live_wallpaper: UpdateWindow result: {:?}",
+            update_result
+        );
     }
 
     let mut path_str = video_path.to_string_lossy().to_string();
@@ -108,8 +125,11 @@ pub fn apply_live_wallpaper(video_path: &Path) -> Result<(), Box<dyn std::error:
 
 pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pid) = *MPV_PROCESS_ID.lock().unwrap() {
-        eprintln!("[RexPaper] Killing live wallpaper mpv process (PID: {})", pid);
-        
+        eprintln!(
+            "[RexPaper] Killing live wallpaper mpv process (PID: {})",
+            pid
+        );
+
         // Kill ONLY the specific mpv process, NOT the tree (/T would kill Explorer on raised desktop)
         let mut cmd = Command::new("taskkill");
         cmd.creation_flags(CREATE_NO_WINDOW);
@@ -118,21 +138,20 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Wait for process to fully exit
-        if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
-            if !handle.0.is_null() {
-                for _ in 0..50 {
-                    let mut exit_code = 0u32;
-                    if unsafe { GetExitCodeProcess(handle, &mut exit_code) }.is_ok() {
-                        if exit_code != 259 { // STILL_ACTIVE
-                            break;
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+        if let Ok(handle) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+            && !handle.0.is_null()
+        {
+            for _ in 0..50 {
+                let mut exit_code = 0u32;
+                if unsafe { GetExitCodeProcess(handle, &mut exit_code) }.is_ok() && exit_code != 259
+                {
+                    // STILL_ACTIVE
+                    break;
                 }
-                let _ = unsafe { CloseHandle(handle) };
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
+            let _ = unsafe { CloseHandle(handle) };
         }
-        
     }
 
     // Sweep up any mpv left behind by a previous run (e.g. after a crash).
@@ -180,7 +199,10 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = SetWindowPos(
                     workerw,
                     None,
-                    0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
                 );
                 eprintln!("[RexPaper] Classic WorkerW restored");
@@ -197,7 +219,12 @@ pub fn stop_live_wallpaper() -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         let progman = get_progman();
         if !progman.0.is_null() && !is_raised_desktop(progman) {
-            let _ = RedrawWindow(Some(progman), None, None, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+            let _ = RedrawWindow(
+                Some(progman),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+            );
         }
     }
 
@@ -230,7 +257,8 @@ pub fn is_foreground_fullscreen() -> bool {
                 || name == "ApplicationFrameWindow"
                 || name == "DV2ControlHost"
                 || name == "TaskListThumbnailWnd"
-                || name == "TopLevelWindowForOverflowXamlIsland" {
+                || name == "TopLevelWindowForOverflowXamlIsland"
+            {
                 return false;
             }
         }
@@ -288,7 +316,9 @@ pub fn start_fullscreen_monitor(
                 let is_fullscreen = is_foreground_fullscreen();
 
                 if is_fullscreen {
-                    if is_live_wallpaper_active() && !IS_PAUSED_FOR_FULLSCREEN.load(Ordering::SeqCst) {
+                    if is_live_wallpaper_active()
+                        && !IS_PAUSED_FOR_FULLSCREEN.load(Ordering::SeqCst)
+                    {
                         IS_PAUSED_FOR_FULLSCREEN.store(true, Ordering::SeqCst);
                         let _ = pause_for_fullscreen();
                         on_pause_change(true);
@@ -436,12 +466,14 @@ unsafe extern "system" fn enum_child_defview_proc(hwnd: HWND, lparam: LPARAM) ->
 /// a child WorkerW.
 fn find_defview_under(progman: HWND) -> Option<HWND> {
     unsafe {
-        if let Ok(dv) =
-            FindWindowExW(Some(progman), None, windows::core::w!("SHELLDLL_DefView"), None)
+        if let Ok(dv) = FindWindowExW(
+            Some(progman),
+            None,
+            windows::core::w!("SHELLDLL_DefView"),
+            None,
+        ) && !dv.0.is_null()
         {
-            if !dv.0.is_null() {
-                return Some(dv);
-            }
+            return Some(dv);
         }
         let mut found = HWND(std::ptr::null_mut());
         let _ = EnumChildWindows(
@@ -457,10 +489,10 @@ fn find_defview_under(progman: HWND) -> Option<HWND> {
 /// an EnumChildWindows fallback.
 fn find_workerw_under(progman: HWND) -> Option<HWND> {
     unsafe {
-        if let Ok(ww) = FindWindowExW(Some(progman), None, windows::core::w!("WorkerW"), None) {
-            if !ww.0.is_null() {
-                return Some(ww);
-            }
+        if let Ok(ww) = FindWindowExW(Some(progman), None, windows::core::w!("WorkerW"), None)
+            && !ww.0.is_null()
+        {
+            return Some(ww);
         }
         let mut found = HWND(std::ptr::null_mut());
         let _ = EnumChildWindows(
@@ -487,7 +519,10 @@ fn reassert_live_wallpaper_zorder(host: HWND) {
             let _ = SetWindowPos(
                 host,
                 Some(defview),
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
         }
@@ -497,7 +532,10 @@ fn reassert_live_wallpaper_zorder(host: HWND) {
             let _ = SetWindowPos(
                 workerw,
                 Some(HWND_BOTTOM),
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
         }
@@ -535,17 +573,24 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
     let mut defview = HWND(std::ptr::null_mut());
     let mut workerw = HWND(std::ptr::null_mut());
     for attempt in 0..8 {
-        if defview.0.is_null() {
-            if let Some(dv) = find_defview_under(progman) {
-                defview = dv;
-                eprintln!("[RexPaper] ensure_host_window: found SHELLDLL_DefView {:?}", defview.0);
-            }
+        if defview.0.is_null()
+            && let Some(dv) = find_defview_under(progman)
+        {
+            defview = dv;
+            eprintln!(
+                "[RexPaper] ensure_host_window: found SHELLDLL_DefView {:?}",
+                defview.0
+            );
         }
         if workerw.0.is_null() {
             spawn_workerw_layers(progman);
             if let Some(ww) = find_workerw_under(progman) {
                 workerw = ww;
-                eprintln!("[RexPaper] ensure_host_window: found WorkerW {:?} on attempt {}", workerw.0, attempt + 1);
+                eprintln!(
+                    "[RexPaper] ensure_host_window: found WorkerW {:?} on attempt {}",
+                    workerw.0,
+                    attempt + 1
+                );
             }
         }
         if !defview.0.is_null() && !workerw.0.is_null() {
@@ -562,7 +607,9 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
             let _ = DestroyWindow(hwnd);
         }
         *DESKTOP_HOST_WINDOW.lock().unwrap() = None;
-        return Err("SHELLDLL_DefView not found under Progman; refusing to place opaque host".into());
+        return Err(
+            "SHELLDLL_DefView not found under Progman; refusing to place opaque host".into(),
+        );
     }
 
     unsafe {
@@ -596,7 +643,9 @@ fn ensure_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
                 eprintln!("[RexPaper] WorkerW pushed to bottom below host");
             }
         } else {
-            eprintln!("[RexPaper] Warning: WorkerW not found after retries, wallpaper layer may misbehave");
+            eprintln!(
+                "[RexPaper] Warning: WorkerW not found after retries, wallpaper layer may misbehave"
+            );
         }
 
         if IsWindow(Some(hwnd)).as_bool() {
@@ -631,7 +680,8 @@ fn create_host_window(progman: HWND) -> Result<HWND, Box<dyn std::error::Error>>
             };
             if RegisterClassW(&wnd_class) == 0 {
                 let err = GetLastError();
-                if err.0 != 1410 { // ERROR_CLASS_ALREADY_EXISTS
+                if err.0 != 1410 {
+                    // ERROR_CLASS_ALREADY_EXISTS
                     eprintln!("[RexPaper] RegisterClassW failed: {:?}", err);
                 }
             }
@@ -707,7 +757,9 @@ fn resolve_live_wallpaper_hwnd() -> Result<HWND, Box<dyn std::error::Error>> {
             Err(e) => eprintln!("[RexPaper] ensure_host_window failed: {}", e),
         }
         // On raised desktop, do NOT fall back to classic (EnumWindows doesn't find child WorkerW)
-        eprintln!("[RexPaper] Raised desktop: host window creation failed, returning Progman as last resort");
+        eprintln!(
+            "[RexPaper] Raised desktop: host window creation failed, returning Progman as last resort"
+        );
         return Ok(progman);
     } else {
         spawn_workerw_layers(progman);
@@ -763,19 +815,24 @@ unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL 
     unsafe {
         let search = &mut *(lparam.0 as *mut WorkerWSearch);
 
-        let shell_dll = FindWindowExW(Some(hwnd), None, windows::core::w!("SHELLDLL_DefView"), None);
-        if let Ok(shell_dll) = shell_dll {
-            if !shell_dll.0.is_null() {
-                // Check if sibling WorkerW can be queried directly behind hwnd
-                if let Ok(workerw) = FindWindowExW(None, Some(hwnd), windows::core::w!("WorkerW"), None) {
-                    if !workerw.0.is_null() {
-                        search.target_workerw = workerw;
-                        return BOOL(0);
-                    }
-                }
-                search.found_shelldll = true;
-                return BOOL(1);
+        let shell_dll = FindWindowExW(
+            Some(hwnd),
+            None,
+            windows::core::w!("SHELLDLL_DefView"),
+            None,
+        );
+        if let Ok(shell_dll) = shell_dll
+            && !shell_dll.0.is_null()
+        {
+            // Check if sibling WorkerW can be queried directly behind hwnd
+            if let Ok(workerw) = FindWindowExW(None, Some(hwnd), windows::core::w!("WorkerW"), None)
+                && !workerw.0.is_null()
+            {
+                search.target_workerw = workerw;
+                return BOOL(0);
             }
+            search.found_shelldll = true;
+            return BOOL(1);
         }
 
         if search.found_shelldll {
@@ -801,7 +858,12 @@ unsafe extern "system" fn enum_workerw_fallback_proc(hwnd: HWND, lparam: LPARAM)
         if len > 0 {
             let name = String::from_utf16_lossy(&class_name[..len as usize]);
             if name == "WorkerW" {
-                let shell = FindWindowExW(Some(hwnd), None, windows::core::w!("SHELLDLL_DefView"), None);
+                let shell = FindWindowExW(
+                    Some(hwnd),
+                    None,
+                    windows::core::w!("SHELLDLL_DefView"),
+                    None,
+                );
                 if shell.is_err() || shell.unwrap().0.is_null() {
                     let ptr = lparam.0 as *mut HWND;
                     *ptr = hwnd;
@@ -818,7 +880,7 @@ unsafe extern "system" fn enum_workerw_fallback_proc(hwnd: HWND, lparam: LPARAM)
 /// mpv executable RexPaper launches; unrelated mpv processes are left alone.
 fn kill_stray_managed_mpv() {
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
     };
 
@@ -845,16 +907,15 @@ fn kill_stray_managed_mpv() {
                     .position(|&c| c == 0)
                     .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..name_len]);
-                if name.eq_ignore_ascii_case("mpv.exe") {
-                    if let Some(path) = process_image_path(entry.th32ProcessID) {
-                        if path.to_lowercase() == our_mpv {
-                            let mut cmd = Command::new("taskkill");
-                            cmd.creation_flags(CREATE_NO_WINDOW);
-                            let _ = cmd
-                                .args(["/PID", &entry.th32ProcessID.to_string(), "/F"])
-                                .status();
-                        }
-                    }
+                if name.eq_ignore_ascii_case("mpv.exe")
+                    && let Some(path) = process_image_path(entry.th32ProcessID)
+                    && path.to_lowercase() == our_mpv
+                {
+                    let mut cmd = Command::new("taskkill");
+                    cmd.creation_flags(CREATE_NO_WINDOW);
+                    let _ = cmd
+                        .args(["/PID", &entry.th32ProcessID.to_string(), "/F"])
+                        .status();
                 }
                 if Process32NextW(snapshot, &mut entry).is_err() {
                     break;
@@ -919,7 +980,11 @@ fn find_mpv_executable() -> Result<std::path::PathBuf, Box<dyn std::error::Error
     }
     // Fallback: which::which("mpv") may return mpv.com due to PATHEXT ordering
     if let Ok(path) = which::which("mpv") {
-        if path.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+        if path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false)
+        {
             return Ok(path);
         }
         // Check for mpv.exe sibling in the same directory

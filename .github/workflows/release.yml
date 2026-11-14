@@ -15,34 +15,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: "."
 
       - name: Stage mpv runtime
         shell: pwsh
         run: ./scripts/fetch-mpv.ps1
 
-      - name: Install frontend dependencies
-        run: npm ci
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
 
-      - name: Build and publish release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build release binary
+        run: cargo build --release -p rexpaper-app
+
+      - name: Package NSIS installer
+        run: cargo packager --release --packages rexpaper-app --formats nsis
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "RexPaper ${{ github.ref_name }}"
-          releaseBody: "Download the `-setup.exe` below to install RexPaper."
-          releaseDraft: false
+          tag_name: ${{ github.ref_name }}
+          name: "RexPaper ${{ github.ref_name }}"
+          body: "Download the `-setup.exe` below to install RexPaper."
+          files: dist/nsis/*-setup.exe
+          fail_on_unmatched_files: true
+          draft: false
           prerelease: false
