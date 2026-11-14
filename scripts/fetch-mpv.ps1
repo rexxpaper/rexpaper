@@ -38,9 +38,13 @@ if ((Test-Path $destExe) -and -not $Force) {
 
 if (-not $Url) {
   Write-Host 'Resolving latest shinchiro mpv x86_64 build...'
+  $headers = @{ 'User-Agent' = 'rexpaper-fetch-mpv' }
+  if ($env:GITHUB_TOKEN) {
+    $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN"
+  }
   $release = Invoke-RestMethod `
     -Uri 'https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest' `
-    -Headers @{ 'User-Agent' = 'rexpaper-fetch-mpv' }
+    -Headers $headers
   $asset = $release.assets |
     Where-Object { $_.name -match '^mpv-x86_64-\d{8}.*\.7z$' } |
     Select-Object -First 1

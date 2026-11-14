@@ -25,6 +25,8 @@ jobs:
 
       - name: Stage mpv runtime
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/fetch-mpv.ps1
 
       - name: Install cargo-packager
