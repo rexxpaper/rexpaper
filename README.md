@@ -92,12 +92,12 @@ cargo packager --release --packages rexpaper-app --formats nsis
 The standalone NSIS installer is written to:
 
 ```
-dist/nsis/RexPaper_<version>_x64-setup.exe
+dist/rexpaper_<version>_x64-setup.exe
 ```
 
 ## Download
 
-Grab the latest installer from the [Releases](https://github.com/rexxpaper/rexpaper/releases/latest) page.
+Grab the latest installer from the [Releases](https://github.com/theabsoluteray/rexpaper/releases/latest) page.
 
 The installer bundles the mpv runtime and installs per-user without an admin prompt. Builds are unsigned, so Windows SmartScreen may warn on first run.
 
@@ -105,7 +105,7 @@ Releases are built by pushing a version tag:
 
 ```powershell
 git tag v1.0.7
-git push origin v1.0.7
+git push fork v1.0.7
 ```
 
 ## Project Layout
