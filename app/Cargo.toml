@@ -31,19 +31,18 @@ rand = "0.9"
 winresource = "0.1"
 
 [package.metadata.packager]
-product_name = "RexPaper"
+productName = "RexPaper"
 identifier = "com.rexpaper.app"
 publisher = "rexxpaper"
-short_description = "A fast, native wallpaper manager for Windows."
-long_description = "RexPaper manages static and mpv-powered live wallpapers on Windows, with a system tray, autostart, and fullscreen auto-pause."
+description = "A fast, native wallpaper manager for Windows."
+longDescription = "RexPaper manages static and mpv-powered live wallpapers on Windows, with a system tray, autostart, and fullscreen auto-pause."
 homepage = "https://github.com/rexxpaper/rexpaper"
 icons = ["../assets/icon.ico"]
-out_dir = "../dist"
-targets = ["nsis"]
-resources = { "mpv/mpv.exe" = "mpv/mpv.exe" }
+outDir = "../dist"
+formats = ["nsis"]
+resources = [{ src = "mpv/mpv.exe", target = "mpv/mpv.exe" }]
 
 [package.metadata.packager.nsis]
-install_mode = "currentUser"
-installer_icon = "../assets/icon.ico"
-installer_hooks = "installer/hooks.nsh"
+installMode = "currentUser"
+installerIcon = "../assets/icon.ico"
 languages = ["English"]

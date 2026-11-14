@@ -44,7 +44,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "RexPaper ${{ github.ref_name }}"
           body: "Download the `-setup.exe` below to install RexPaper."
-          files: dist/nsis/*-setup.exe
+          files: dist/*-setup.exe
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
